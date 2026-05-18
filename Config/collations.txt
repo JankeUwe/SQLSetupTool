@@ -1,0 +1,35 @@
+# =============================================================================
+# SQL Server Setup Tool – Collation-Auswahlliste
+# Eine Collation pro Zeile. Leerzeilen und Zeilen mit # werden ignoriert.
+#
+# Die Standard-Collation wird weiterhin in settings.ini ([Collations] Standard=)
+# konfiguriert und als Fallback verwendet wenn diese Datei fehlt oder leer ist.
+#
+# Domaenenspezifische Vorgaben ([Collations] Domain_<NAME>=) werden automatisch
+# an die erste Position der Combobox gestellt; Duplikate werden entfernt.
+# =============================================================================
+
+# --- SQL Server-Sortierungen (Latin / CI) ------------------------------------
+SQL_Latin1_General_CP1_CI_AS
+SQL_Latin1_General_CP1_CI_AI
+SQL_Latin1_General_CP1_CS_AS
+
+# --- Windows-Sortierungen (Deutsch / Mitteleuropa) ---------------------------
+Latin1_General_CI_AS
+Latin1_General_CS_AS
+Latin1_General_CI_AI
+German_PhoneBook_CI_AS
+German_PhoneBook_CS_AS
+
+# --- Windows-Sortierungen (weitere europaeische Sprachen) --------------------
+Finnish_Swedish_CI_AS
+French_CI_AS
+Danish_Norwegian_CI_AS
+Polish_CI_AS
+Czech_CI_AS
+Slovak_CI_AS
+Hungarian_CI_AS
+
+# --- Unicode / BIN ------------------------------------
+Latin1_General_BIN
+Latin1_General_BIN2

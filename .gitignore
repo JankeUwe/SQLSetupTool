@@ -1,0 +1,14 @@
+# Fehlerhaft erzeugter Ordner (PowerShell Glob-Expansion Artefakt)
+{Config,GUI,Modules,Scripts}/
+
+# Grosse Binaries (PDF liegt als SQLSetupTool.pdf im Root)
+*.pdf
+
+# LibreOffice Lock-Dateien
+.~lock.*
+
+# Temporäre Dateien
+*.tmp
+*.bak
+Thumbs.db
+desktop.ini
