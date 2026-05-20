@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQL Server Setup Tool – Präsentation</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/black.css">
+<style>
+/* ── Basis ─────────────────────────────────────────────── */
+:root {
+  --blue:   #2e86c1;
+  --lblue:  #5dade2;
+  --green:  #4ade80;
+  --yellow: #f0c040;
+  --red:    #f87171;
+  --dark:   #060f20;
+  --card:   rgba(255,255,255,0.05);
+  --bd:     rgba(46,134,193,0.3);
+}
+.reveal { font-family: 'Segoe UI', system-ui, sans-serif; }
+.reveal .slides section { text-align: left; }
+.reveal h1, .reveal h2, .reveal h3 { text-transform: none; letter-spacing: 0; }
+.reveal h1 { font-size: 1.9rem; color: var(--lblue); font-weight: 800; margin-bottom: .5rem; }
+.reveal h2 { font-size: 1.45rem; color: #fff; font-weight: 700; margin-bottom: .4rem; }
+.reveal h3 { font-size: 1.05rem; color: var(--lblue); font-weight: 600; margin-bottom: .3rem; }
+.reveal p, .reveal li { font-size: .88rem; color: #cbd5e1; line-height: 1.65; }
+.reveal ul { margin-left: 1.2rem; }
+.reveal li { margin-bottom: .35rem; }
+.reveal code { font-family: Consolas, monospace; font-size: .8rem;
+  background: rgba(255,255,255,.1); padding: 1px 6px; border-radius: 3px; color: #9cdcfe; }
+.reveal pre { background: #0d1117; border-radius: 8px; padding: 1rem 1.2rem;
+  font-family: Consolas, monospace; font-size: .78rem; line-height: 1.7;
+  box-shadow: 0 4px 20px rgba(0,0,0,.5); margin: .6rem 0; }
+.reveal pre .ck  { color: #9cdcfe; }
+.reveal pre .cs  { color: #4ade80; }
+.reveal pre .cc  { color: #6272a4; }
+.reveal pre .cw  { color: #f0c040; }
+.reveal pre .ce  { color: #f87171; }
+
+/* ── Eyebrow / Badge ───────────────────────────────────── */
+.eyebrow {
+  display: inline-flex; align-items: center; gap: .4rem;
+  background: rgba(46,134,193,.15); border: 1px solid rgba(46,134,193,.4);
+  color: var(--lblue); font-size: .68rem; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase;
+  padding: .22rem .75rem; border-radius: 999px; margin-bottom: .75rem;
+}
+.eyebrow::before { content:''; width:6px; height:6px;
+  background:#28c840; border-radius:50%; box-shadow:0 0 6px #28c840; }
+
+/* ── Titelfolie ────────────────────────────────────────── */
+#slide-title { text-align: center;
+  background: radial-gradient(ellipse at 30% 60%, rgba(46,134,193,.15) 0%, transparent 65%),
+              linear-gradient(160deg, #060f20 0%, #0b1e3d 100%);
+  border-radius: 12px; padding: 3rem 2rem; }
+#slide-title h1 { font-size: 2.4rem; line-height: 1.15; margin-bottom: .6rem; }
+#slide-title h1 em { font-style:normal;
+  background: linear-gradient(135deg,#5dade2,#a8d8f0);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+#slide-title .sub { color:#94a8c0; font-size:.95rem; margin-bottom:1.5rem; }
+.pill-row { display:flex; justify-content:center; gap:.5rem; flex-wrap:wrap; margin-top:1rem; }
+.pill { font-size:.7rem; font-weight:700; padding:.25rem .75rem;
+  border-radius:999px; border:1px solid; }
+.pill-b { color:var(--lblue); border-color:rgba(93,173,226,.4); background:rgba(46,134,193,.12); }
+.pill-g { color:var(--green); border-color:rgba(74,222,128,.4); background:rgba(74,222,128,.1); }
+
+/* ── Layouts ───────────────────────────────────────────── */
+.cols2 { display:grid; grid-template-columns:1fr 1fr; gap:1.2rem; margin-top:.5rem; }
+.cols3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:.9rem; margin-top:.5rem; }
+.col  { background:var(--card); border:1px solid var(--bd);
+  border-radius:10px; padding:.9rem 1rem; }
+.col h3 { margin-bottom:.4rem; }
+
+/* ── Cards ─────────────────────────────────────────────── */
+.card { background:var(--card); border:1px solid var(--bd);
+  border-radius:10px; padding:.85rem 1rem; margin-bottom:.55rem; }
+.card-ico { font-size:1.3rem; margin-bottom:.2rem; }
+.card h3  { font-size:.88rem; color:#fff; font-weight:700; margin:0 0 .2rem; }
+.card p   { font-size:.78rem; color:#94a8c0; margin:0; }
+
+/* ── Steps ─────────────────────────────────────────────── */
+.steps { display:flex; flex-direction:column; gap:.45rem; margin-top:.4rem; }
+.step  { display:flex; align-items:flex-start; gap:.75rem; }
+.step-n { width:28px; height:28px; border-radius:50%; flex-shrink:0;
+  background:linear-gradient(135deg,#2e86c1,#1a5f8a);
+  color:#fff; font-weight:800; font-size:.8rem;
+  display:flex; align-items:center; justify-content:center; }
+.step-body { padding-top:.25rem; }
+.step-body strong { color:#fff; font-size:.84rem; }
+.step-body p { font-size:.78rem; color:#94a8c0; margin:.1rem 0 0; }
+
+/* ── Tabelle ───────────────────────────────────────────── */
+.dtbl { width:100%; border-collapse:collapse; font-size:.78rem; margin-top:.5rem; }
+.dtbl th { background:rgba(46,134,193,.2); color:var(--lblue);
+  font-weight:700; padding:.45rem .7rem; text-align:left;
+  border-bottom:1px solid rgba(46,134,193,.3); }
+.dtbl td { padding:.4rem .7rem; border-bottom:1px solid rgba(255,255,255,.06); color:#cbd5e1; }
+.dtbl tr:last-child td { border-bottom:none; }
+.dtbl tr:hover td { background:rgba(255,255,255,.03); }
+.dtbl code { font-size:.73rem; }
+.ok  { color:var(--green); font-weight:600; }
+.warn{ color:var(--yellow); font-weight:600; }
+.err { color:var(--red); font-weight:600; }
+
+/* ── Alert Boxen ───────────────────────────────────────── */
+.alert { border-left:3px solid; border-radius:0 8px 8px 0;
+  padding:.65rem 1rem; margin:.5rem 0; font-size:.8rem; }
+.alert strong { display:block; margin-bottom:.2rem; }
+.alert-w { background:rgba(240,192,64,.08);  border-color:var(--yellow); color:#fde68a; }
+.alert-g { background:rgba(74,222,128,.08);  border-color:var(--green);  color:#86efac; }
+.alert-b { background:rgba(46,134,193,.1);   border-color:var(--blue);   color:#93c5fd; }
+.alert-r { background:rgba(248,113,113,.08); border-color:var(--red);    color:#fca5a5; }
+
+/* ── Abschnitts-Trenner ────────────────────────────────── */
+.section-slide {
+  background: radial-gradient(ellipse at 70% 30%, rgba(46,134,193,.18) 0%, transparent 65%),
+              linear-gradient(160deg,#060f20 0%,#0b1e3d 100%);
+  border-radius:12px; display:flex; flex-direction:column;
+  justify-content:center; align-items:center; text-align:center;
+  min-height:60vh; padding:2rem; }
+.section-slide h2 { font-size:2rem; margin-bottom:.5rem; }
+.section-slide p  { color:#94a8c0; font-size:.95rem; }
+
+/* ── Querverbindung ────────────────────────────────────── */
+.xref { display:inline-flex; align-items:center; gap:.4rem;
+  background:rgba(74,222,128,.08); border:1px solid rgba(74,222,128,.3);
+  color:#86efac; font-size:.75rem; padding:.3rem .8rem;
+  border-radius:6px; margin:.2rem .2rem .2rem 0; }
+.xref::before { content:'↗'; }
+
+/* ── Timeline ──────────────────────────────────────────── */
+.timeline { display:flex; align-items:stretch; gap:0; margin:.6rem 0; flex-wrap:wrap; }
+.tl-item { flex:1; min-width:130px; }
+.tl-box { background:var(--card); border:1px solid var(--bd);
+  border-radius:8px; padding:.6rem .7rem; text-align:center; }
+.tl-num { width:24px; height:24px; border-radius:50%;
+  background:linear-gradient(135deg,#2e86c1,#1a5f8a);
+  color:#fff; font-weight:800; font-size:.72rem; margin:0 auto .3rem;
+  display:flex; align-items:center; justify-content:center; }
+.tl-title { font-size:.72rem; color:#fff; font-weight:700; margin-bottom:.15rem; }
+.tl-sub   { font-size:.63rem; color:#94a8c0; }
+.tl-arrow { display:flex; align-items:center; color:var(--blue); font-size:1rem;
+  padding:0 .2rem; padding-top:.8rem; }
+
+/* ── PostInstall Badge-Grid ────────────────────────────── */
+.pi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:.35rem; margin-top:.5rem; }
+.pi-item { background:var(--card); border:1px solid var(--bd);
+  border-radius:6px; padding:.35rem .6rem; display:flex; align-items:center; gap:.5rem; }
+.pi-num { width:20px; height:20px; border-radius:50%; flex-shrink:0;
+  background:linear-gradient(135deg,#2e86c1,#1a5f8a);
+  color:#fff; font-weight:800; font-size:.65rem;
+  display:flex; align-items:center; justify-content:center; }
+.pi-lbl { font-size:.74rem; color:#cbd5e1; }
+.pi-lbl.new { color:var(--green); font-weight:600; }
+
+/* ── Source-Tree ───────────────────────────────────────── */
+.tree { font-family:Consolas,monospace; font-size:.77rem; line-height:1.8;
+  background:#0d1117; border-radius:8px; padding:.9rem 1.2rem; }
+.tree .td { color:#5dade2; }
+.tree .tf { color:#9cdcfe; }
+.tree .tc { color:#6272a4; font-style:italic; }
+.tree .tn { color:#f0c040; font-weight:600; }
+
+/* ── WinForms GUI Mockup (.psdb-ss scoped) ─────────────── */
+.psdb-ss *, .psdb-ss *::before, .psdb-ss *::after { box-sizing:border-box; }
+.psdb-ss .gui-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.psdb-ss .wf {
+  min-width:660px; max-width:1100px; margin:.4rem auto 0;
+  background:#f0f0f0; border:1px solid #aaa; border-radius:6px;
+  overflow:hidden; font-family:'Segoe UI',sans-serif; font-size:.79rem;
+  box-shadow:0 6px 28px rgba(0,0,0,.6);
+}
+.psdb-ss .wf-tbar {
+  background:#0078d7; color:#fff; padding:5px 10px;
+  display:flex; align-items:center; gap:7px; user-select:none;
+}
+.psdb-ss .wf-tbar span { flex:1; font-size:.79rem; font-weight:600; }
+.psdb-ss .wf-ctrl-btns { display:flex; gap:4px; }
+.psdb-ss .wcb {
+  width:22px; height:18px; background:rgba(255,255,255,.18);
+  border:1px solid rgba(255,255,255,.3); border-radius:2px;
+  display:flex; align-items:center; justify-content:center; font-size:.72rem; cursor:default;
+}
+.psdb-ss .wcb-x { background:#e74c3c; border-color:#c0392b; }
+.psdb-ss .wf-body { padding:8px 10px; display:flex; flex-direction:column; gap:6px; background:#f0f0f0; }
+.psdb-ss .gb { border:1px solid #bbb; border-radius:4px; padding:7px 9px 7px; background:#f8f8f8; position:relative; }
+.psdb-ss .gb-lbl { position:absolute; top:-9px; left:10px; background:#f8f8f8; padding:0 4px; font-size:.76rem; font-weight:600; color:#333; }
+.psdb-ss .wf-row { display:flex; align-items:center; flex-wrap:wrap; gap:4px; margin-top:5px; }
+.psdb-ss .wf-lbl { color:#333; white-space:nowrap; }
+.psdb-ss .wf-lbl-50  { width:50px; }
+.psdb-ss .wf-lbl-65  { width:65px; }
+.psdb-ss .wf-lbl-90  { width:90px; }
+.psdb-ss .wf-lbl-110 { width:110px; }
+.psdb-ss .wf-lbl-150 { width:150px; }
+.psdb-ss .wf-cb { border:1px solid #aaa; border-radius:2px; padding:2px 6px; background:#fff; display:flex; align-items:center; justify-content:space-between; }
+.psdb-ss .wf-cb::after { content:'▾'; color:#666; margin-left:6px; font-size:.7rem; }
+.psdb-ss .wf-cb-w120 { width:120px; }
+.psdb-ss .wf-cb-w160 { width:160px; }
+.psdb-ss .wf-cb-w180 { width:180px; }
+.psdb-ss .wf-cb-w280 { width:280px; }
+.psdb-ss .wf-tb { border:1px solid #aaa; border-radius:2px; padding:2px 6px; background:#fff; display:flex; align-items:center; }
+.psdb-ss .wf-tb-pw { letter-spacing:2px; }
+.psdb-ss .cv { color:#003070; font-weight:600; font-size:.79rem; }
+.psdb-ss .cv-muted { color:#999; font-style:italic; }
+.psdb-ss .wf-hint { color:#666; font-size:.75rem; }
+.psdb-ss .wf-btn { padding:3px 12px; background:#e1e1e1; border:1px solid #aaa; border-radius:2px; cursor:default; font-size:.78rem; color:#222; }
+.psdb-ss .wf-btn-sm { padding:2px 8px; font-size:.75rem; }
+.psdb-ss .wf-btn-primary { background:#0078d7; color:#fff; border-color:#005fa3; font-weight:600; }
+.psdb-ss .wf-spacer { flex:1; }
+.psdb-ss .wf-drives { display:flex; flex-wrap:wrap; gap:10px; margin-top:5px; }
+.psdb-ss .wf-drv { display:flex; align-items:center; gap:4px; }
+.psdb-ss .wf-chk-row { display:flex; flex-wrap:wrap; gap:16px; margin-top:5px; }
+.psdb-ss .wf-chk { display:flex; align-items:center; gap:5px; color:#222; font-size:.8rem; cursor:default; }
+.psdb-ss .wf-box { width:13px; height:13px; border:1px solid #888; background:#fff; border-radius:2px; flex-shrink:0; }
+.psdb-ss .wf-box-chk { background:#0078d7 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 6l3 3 5-5' stroke='%23fff' stroke-width='2' fill='none'/%3E%3C/svg%3E") center/10px no-repeat; border-color:#005fa3; }
+.psdb-ss .wf-actions { display:flex; align-items:center; gap:6px; margin-top:5px; }
+.psdb-ss .wf-log { background:#1e1e1e; border-radius:3px; padding:6px 9px; font-family:Consolas,monospace; font-size:.75rem; line-height:1.65; margin-top:5px; }
+.psdb-ss .ll { display:block; }
+.psdb-ss .lt   { color:#666; margin-right:6px; }
+.psdb-ss .linf { color:#9cdcfe; }
+.psdb-ss .lok  { color:#4ade80; }
+.psdb-ss .lwarn { color:#f0c040; }
+.psdb-ss .wf-statusbar { background:#e8e8e8; border-top:1px solid #ccc; padding:4px 10px; display:flex; align-items:center; gap:10px; font-size:.76rem; color:#444; }
+.psdb-ss .wf-pbar { flex:1; height:7px; background:#ccc; border-radius:4px; overflow:hidden; }
+.psdb-ss .wf-pbar-fill { width:42%; height:100%; background:#0078d7; border-radius:4px; }
+
+/* ── Slide Padding ─────────────────────────────────────── */
+.reveal .slides > section { padding: 1.5rem 2rem; }
+</style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 1 — Titel
+══════════════════════════════════════════════════════ -->
+<section>
+  <div id="slide-title">
+    <div class="eyebrow">DBA Tooling · FI-TS München · 2026</div>
+    <h1>SQL Server<br><em>Setup Tool</em></h1>
+    <p class="sub">Standardisierte, reproduzierbare SQL Server Installationen<br>nach Unternehmensstandard — vollautomatisch, domänenspezifisch</p>
+    <div class="pill-row">
+      <span class="pill pill-b">SQL Server 2019 / 2022 / 2025</span>
+      <span class="pill pill-b">Windows Server 2022</span>
+      <span class="pill pill-g">PowerShell 5.1</span>
+      <span class="pill pill-b">dbaTools 2.x</span>
+      <span class="pill pill-b">WinForms GUI</span>
+    </div>
+    <p style="margin-top:1.5rem;font-size:.72rem;color:#64748b;">Uwe Janke &nbsp;·&nbsp; Senior SQL Server DBA &nbsp;·&nbsp; dtcSoftware</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 2 — The Problem
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Motivation</div>
+  <h1>The Problem</h1>
+  <p>Manuelle SQL Server Installation — jedes Mal anders, jedes Mal fehleranfällig.</p>
+  <div class="cols2" style="margin-top:.7rem;">
+    <div>
+      <div class="card">
+        <div class="card-ico">⏱️</div>
+        <h3>1–3 Stunden</h3>
+        <p>Manueller Aufwand je Installation — ohne Nachkonfiguration. Mit Härtung schnell 4+ Stunden</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">🗂️</div>
+        <h3>Kein einheitlicher Standard</h3>
+        <p>Laufwerksbelegung, Collation, TempDB-Größe variieren je Bearbeiter. Kein versionierter Stand</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">🔐</div>
+        <h3>Härtung vergessen</h3>
+        <p>SA-Account aktiv, Max Memory nicht gesetzt, Ola-Jobs fehlen — Abweichungen fallen erst im Betrieb auf</p>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <div class="card-ico">🏢</div>
+        <h3>Domänen-Unterschiede</h3>
+        <p>HLB vs. CONTOSO: andere Collation, andere Laufwerke, andere Sysadmin-Gruppen — manuell gepflegt</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">📋</div>
+        <h3>57 Firmen-Scripts</h3>
+        <p>Früher 57 einzelne SQL-Skripte manuell nachinstalliert. Kein Protokoll. Kein Fehler-Handling</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">🔄</div>
+        <h3>Nicht reproduzierbar</h3>
+        <p>Neue Umgebung? Alter DBA ist weg? — Kein Nachweis was installiert wurde und in welchem Zustand</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 3 — The Solution
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Überblick</div>
+  <h1>The Solution</h1>
+  <div class="cols2">
+    <div>
+      <p>Ein Tool, eine Konfiguration, ein Standard. Domäne einmal in der INI hinterlegen — danach läuft alles automatisch.</p>
+      <br>
+      <div class="card">
+        <div class="card-ico">🖥️</div>
+        <h3>WinForms GUI</h3>
+        <p>Kein PowerShell-Wissen nötig. Domänspezifische Vorbelegung, alle Parameter auf einem Blick</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">🔒</div>
+        <h3>17-stufige PostInstall-Härtung</h3>
+        <p>NTFS, MaxMemory, MAXDOP, TempDB, SA-Obfuscation, Ola-Jobs, Firmen-Scripts — vollautomatisch</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">🏢</div>
+        <h3>Zero-Touch für neue Domänen</h3>
+        <p>INI-Block hinzufügen, kein Code anfassen. Alle Parameter domänenspezifisch überschreibbar</p>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.6rem;">
+      <table class="dtbl">
+        <thead><tr><th>Vorher</th><th>Nachher</th></tr></thead>
+        <tbody>
+          <tr><td>1–4 Stunden manuell</td><td class="ok">~25–70 Min. vollautomatisch</td></tr>
+          <tr><td>Jedes Mal anders</td><td class="ok">Reproduzierbar, versioniert</td></tr>
+          <tr><td>Härtung vergessen</td><td class="ok">17 Schritte garantiert</td></tr>
+          <tr><td>57 SQL-Scripts manuell</td><td class="ok">Automatisch alphabetisch</td></tr>
+          <tr><td>Keine Domänen-Logik</td><td class="ok">INI-basiert, zero-touch</td></tr>
+        </tbody>
+      </table>
+      <div class="alert alert-g">
+        <strong>✓ Getestet auf</strong>
+        Windows Server 2022 · SQL Server 2019, 2022, 2025 · Domänen HLB und CONTOSO
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 4 — Prerequisites & Quellstruktur
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Vorbereitung</div>
+  <h1>Prerequisites &amp; Source Structure</h1>
+  <div class="cols2">
+    <div>
+      <h3>Voraussetzungen</h3>
+      <table class="dtbl" style="margin-top:.3rem;">
+        <thead><tr><th>Anforderung</th><th>Hinweis</th></tr></thead>
+        <tbody>
+          <tr><td>Lokaler Administrator</td><td>Auf dem Zielserver</td></tr>
+          <tr><td>5 Laufwerke</td><td>C/F/G/H/I — per INI konfigurierbar</td></tr>
+          <tr><td>Netzwerk-Share erreichbar</td><td><code>\\srv\SQLSources</code></td></tr>
+          <tr><td><code>dbaTools ≥ 2.0</code></td><td class="ok">Wird automatisch installiert</td></tr>
+          <tr><td><code>sqmSQLTool</code></td><td class="ok">Wird automatisch installiert</td></tr>
+          <tr><td>SQL Server ISO entpackt</td><td>Im SQLSources-Share vorbereitet</td></tr>
+        </tbody>
+      </table>
+      <div class="alert alert-b" style="margin-top:.6rem;">
+        <strong>ℹ New-SqlSourceStructure.ps1</strong>
+        Legt den kompletten SQLSources-Ordnerbaum automatisch an — mit README.txt in jedem Ordner.
+      </div>
+    </div>
+    <div>
+      <h3>SQLSources-Struktur</h3>
+      <div class="tree">
+        <span><span class="td">\\srv\SQLSources\</span></span>
+        <span><span class="td">├── SQL2022\</span></span>
+        <span><span class="td">│   ├── SQL_Install\</span> <span class="tc">← entpacktes ISO</span></span>
+        <span><span class="td">│   │   └── Updates\</span> <span class="tc">← aktuelles CU (.exe)</span></span>
+        <span><span class="td">│   ├── Reporting\</span> <span class="tc">← SSRS-Installer</span></span>
+        <span><span class="td">│   └── Management\</span> <span class="tc">← SSMS-Installer</span></span>
+        <span><span class="td">├── SQL2019\</span> <span class="tc">← gleiche Struktur</span></span>
+        <span><span class="td">├── SQL2025\</span> <span class="tc">← gleiche Struktur</span></span>
+        <span><span class="tn">├── Scripts\</span> <span class="tc">← Firmen-SQL-Skripte</span></span>
+        <span><span class="td">└── TDP\</span> <span class="tc">← IBM Spectrum Protect</span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 5 — The Interface
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Bedienung</div>
+  <h1>The Interface</h1>
+  <p style="margin-bottom:.4rem;">Domänenspezifisch vorbelegt — Version, Collation, Laufwerke, Monitoring. Alles auf einem Formular.</p>
+
+  <div class="psdb-ss">
+  <div class="gui-scroll">
+  <div class="wf">
+
+    <div class="wf-tbar">
+      <span>⚙️ SQL Server Setup - Standardisierte Installation</span>
+      <div class="wf-ctrl-btns">
+        <div class="wcb">−</div><div class="wcb">□</div><div class="wcb wcb-x">✕</div>
+      </div>
+    </div>
+
+    <div class="wf-body">
+
+      <div class="gb">
+        <span class="gb-lbl">① SQL Server Version &amp; Edition</span>
+        <div class="wf-row">
+          <span class="wf-lbl wf-lbl-65">Version:</span>
+          <div class="wf-cb wf-cb-w120"><span class="cv">2022</span></div>
+          &nbsp;&nbsp;
+          <span class="wf-lbl wf-lbl-50">Edition:</span>
+          <div class="wf-cb wf-cb-w180"><span class="cv">Developer</span></div>
+          &nbsp;&nbsp;&nbsp;
+          <span class="wf-hint" style="margin-left:auto">🏢 Domain: HLB</span>
+        </div>
+      </div>
+
+      <div class="gb">
+        <span class="gb-lbl">② Instanzname</span>
+        <div class="wf-row">
+          <span class="wf-lbl wf-lbl-90">Instanzname:</span>
+          <div class="wf-tb" style="width:200px"><span class="cv">MSSQLServer</span></div>
+          &nbsp;<div class="wf-btn wf-btn-sm">Standard</div>
+          &nbsp;<span class="wf-hint">(leer / MSSQLServer = Standardinstanz)</span>
+        </div>
+      </div>
+
+      <div class="gb">
+        <span class="gb-lbl">③ Sortierung (Collation)</span>
+        <div class="wf-row">
+          <span class="wf-lbl wf-lbl-90">Sortierung:</span>
+          <div class="wf-cb wf-cb-w280"><span class="cv">SQL_Latin1_General_CP1_CI_AS</span></div>
+          &nbsp;&nbsp;<span class="wf-hint">✓ Domain-Sortierung aktiv (HLB-Standard)</span>
+        </div>
+      </div>
+
+      <div class="gb">
+        <span class="gb-lbl">④ Service-Konto &nbsp;<span style="font-weight:400;color:#555">(leer = NT SERVICE\MSSQLSERVER)</span></span>
+        <div class="wf-row">
+          <span class="wf-lbl wf-lbl-150">Konto (DOMAIN\User):</span>
+          <div class="wf-tb" style="width:220px"><span class="cv-muted">HLB\svc-sql-prod</span></div>
+          &nbsp;<div class="wf-btn wf-btn-sm">AD prüfen</div>
+        </div>
+        <div class="wf-row">
+          <span class="wf-lbl wf-lbl-150">Passwort:</span>
+          <div class="wf-tb wf-tb-pw" style="width:220px">••••••••</div>
+          &nbsp;<span class="wf-hint">⚠️ AD-Prüfung zählt zur Lockout-Policy!</span>
+        </div>
+      </div>
+
+      <div class="gb">
+        <span class="gb-lbl">⑤ Plattenlayout &nbsp;<span style="font-weight:400;color:#555">Domain HLB · aus INI</span></span>
+        <div class="wf-drives">
+          <div class="wf-drv"><span class="wf-lbl wf-lbl-90">Installation:</span><div class="wf-tb" style="width:40px"><span class="cv">C:</span></div></div>
+          <div class="wf-drv"><span class="wf-lbl wf-lbl-50">Daten:</span><div class="wf-tb" style="width:40px"><span class="cv">G:</span></div></div>
+          <div class="wf-drv"><span class="wf-lbl wf-lbl-50">Log:</span><div class="wf-tb" style="width:40px"><span class="cv">H:</span></div></div>
+          <div class="wf-drv"><span class="wf-lbl wf-lbl-65">TempDB:</span><div class="wf-tb" style="width:40px"><span class="cv">I:</span></div></div>
+          <div class="wf-drv"><span class="wf-lbl wf-lbl-65">Backup:</span><div class="wf-tb" style="width:40px"><span class="cv">F:</span></div></div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+        <div class="gb">
+          <span class="gb-lbl">⑥ Monitoring</span>
+          <div class="wf-row">
+            <span class="wf-lbl wf-lbl-110">Monitoring-Typ:</span>
+            <div class="wf-cb wf-cb-w160"><span class="cv">Vollständig</span></div>
+          </div>
+        </div>
+        <div class="gb">
+          <span class="gb-lbl">⑦ Optionale Komponenten</span>
+          <div class="wf-chk-row">
+            <div class="wf-chk"><div class="wf-box"></div>SSRS</div>
+            <div class="wf-chk"><div class="wf-box"></div>SSAS</div>
+            <div class="wf-chk"><div class="wf-box wf-box-chk"></div>SSMS</div>
+            <div class="wf-chk"><div class="wf-box wf-box-chk"></div>SSIS</div>
+            <div class="wf-chk"><div class="wf-box"></div>TDP</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gb">
+        <span class="gb-lbl">⑧ Aktionen</span>
+        <div class="wf-actions">
+          <div class="wf-btn">Quellen kopieren</div>
+          <div class="wf-btn wf-btn-primary">Installation starten</div>
+          <div class="wf-spacer"></div>
+          <div class="wf-btn">Schließen</div>
+        </div>
+      </div>
+
+      <div class="gb">
+        <span class="gb-lbl">⑨ Protokoll</span>
+        <div class="wf-log">
+          <span class="ll"><span class="lt">[09:42:11]</span><span class="linf">Konfiguration geladen. Domain: HLB · Sortierung: SQL_Latin1_General_CP1_CI_AS</span></span>
+          <span class="ll"><span class="lt">[09:43:05]</span><span class="lok">Phase 1: Robocopy gestartet - \\srv\SQLSources\SQL2022 → C:\SQLSources\SQL2022</span></span>
+          <span class="ll"><span class="lt">[09:48:32]</span><span class="lok">Phase 1 abgeschlossen. 4,2 GB in 327 Sek. kopiert</span></span>
+          <span class="ll"><span class="lt">[09:48:35]</span><span class="linf">Phase 2: Install-DbaInstance SQL Server 2022 Developer ...</span></span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="wf-statusbar">
+      <span>Phase 2 - SQL Server Installation läuft ... bitte warten</span>
+      <div class="wf-pbar"><div class="wf-pbar-fill"></div></div>
+    </div>
+
+  </div>
+  </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 6 — 4-Phasen Workflow
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Ablauf</div>
+  <h1>4-Phase Workflow</h1>
+  <p style="margin-bottom:.7rem;">Alle Phasen laufen sequenziell in einem Background-Thread — GUI bleibt jederzeit bedienbar.</p>
+
+  <div class="timeline">
+    <div class="tl-item"><div class="tl-box"><div class="tl-num">1</div><div class="tl-title">Quellvorbereitung</div><div class="tl-sub">Robocopy<br>5–15 Min.</div></div></div>
+    <div class="tl-arrow">›</div>
+    <div class="tl-item"><div class="tl-box"><div class="tl-num">2</div><div class="tl-title">SQL Server Install</div><div class="tl-sub">Install-DbaInstance<br>10–25 Min.</div></div></div>
+    <div class="tl-arrow">›</div>
+    <div class="tl-item"><div class="tl-box"><div class="tl-num">3</div><div class="tl-title">Opt. Komponenten</div><div class="tl-sub">SSAS/SSRS/SSMS/TDP<br>0–20 Min.</div></div></div>
+    <div class="tl-arrow">›</div>
+    <div class="tl-item"><div class="tl-box"><div class="tl-num">4</div><div class="tl-title">PostInstall</div><div class="tl-sub">17 Schritte<br>3–8 Min.</div></div></div>
+  </div>
+
+  <div class="cols2" style="margin-top:.8rem;">
+    <div>
+      <h3>Phase 1 — Robocopy</h3>
+      <div class="steps">
+        <div class="step"><div class="step-n">▸</div><div class="step-body"><strong>Lokale Kopie vom Share</strong><p><code>robocopy \\srv\SQLSources\SQL2022 C:\SQLSources\SQL2022 /E /R:2 /W:5</code></p></div></div>
+        <div class="step"><div class="step-n">▸</div><div class="step-body"><strong>Warum lokal?</strong><p>Setup.exe und CU-Patch laufen stabiler von lokalem Laufwerk. Netzwerkunterbrechungen während des Setups vermieden</p></div></div>
+        <div class="step"><div class="step-n">▸</div><div class="step-body"><strong>Slipstream CU</strong><p>CU-Datei in <code>\Updates\</code> wird von <code>Install-DbaInstance</code> automatisch als <code>UpdateSourcePath</code> verwendet</p></div></div>
+      </div>
+    </div>
+    <div>
+      <h3>Phase 3 — Optionale Komponenten</h3>
+      <table class="dtbl" style="margin-top:.3rem;">
+        <thead><tr><th>Komponente</th><th>Installer</th></tr></thead>
+        <tbody>
+          <tr><td>SSRS</td><td><code>SQLServerReportingServices.exe</code> — eigenständig ab 2017</td></tr>
+          <tr><td>SSAS</td><td>Im SQL-Setup via Feature <code>AS</code> aktiviert</td></tr>
+          <tr><td>SSMS</td><td><code>SSMS-Setup-ENU.exe</code> — versionsneutral</td></tr>
+          <tr><td>SSIS</td><td>Feature <code>IS</code> im SQL-Engine-Setup (keine Extra-Datei)</td></tr>
+          <tr><td>TDP</td><td><code>setup.exe</code> aus <code>\TDP\</code> — versionsneutral</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 7 — Deep Dive: Install-DbaInstance
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Deep Dive · Phase 2</div>
+  <h1>Install-DbaInstance — Parameter &amp; Slipstream</h1>
+  <div class="cols2">
+    <div>
+      <p>Das Tool übergibt alle Parameter vollständig aus INI + GUI an <code>Install-DbaInstance</code>. Keine INI-Datei wird manuell erstellt.</p>
+      <table class="dtbl" style="margin-top:.5rem;">
+        <thead><tr><th>Parameter</th><th>Quelle</th></tr></thead>
+        <tbody>
+          <tr><td><code>Version</code></td><td>GUI ComboBox</td></tr>
+          <tr><td><code>Edition</code></td><td>GUI ComboBox</td></tr>
+          <tr><td><code>InstanceName</code></td><td>GUI TextBox</td></tr>
+          <tr><td><code>Collation</code></td><td>INI / Domain-Override</td></tr>
+          <tr><td><code>DataPath / LogPath</code></td><td>INI DiskLayout</td></tr>
+          <tr><td><code>TempPath</code></td><td>INI DiskLayout</td></tr>
+          <tr><td><code>BackupPath</code></td><td>INI DiskLayout</td></tr>
+          <tr><td><code>UpdateSourcePath</code></td><td><code>\SQL_Install\Updates\</code> auto</td></tr>
+          <tr><td><code>ProductID</code></td><td>INI SerialNumbers</td></tr>
+          <tr><td><code>SqlSvcAccount</code></td><td>GUI Eingabe</td></tr>
+          <tr><td><code>Features</code></td><td>INI + GUI Checkboxen</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <pre><span class="cc"># Slipstream CU automatisch erkennen</span>
+<span class="ck">$cuPath</span> = Join-Path $localSrc <span class="cs">'SQL_Install\Updates'</span>
+<span class="ck">$cuFile</span> = Get-ChildItem $cuPath <span class="cs">'*.exe'</span> `
+           -ErrorAction SilentlyContinue |
+           Select-Object -First 1
+
+<span class="cc"># Install-DbaInstance Aufruf (Auszug)</span>
+<span class="ck">$params</span> = @{
+  SqlInstance      = <span class="cs">'localhost'</span>
+  Version          = $ver
+  Edition          = $edition
+  Path             = $localSrc
+  <span class="cw">UpdateSourcePath = if ($cuFile) { $cuPath } else { $null }</span>
+  Collation        = $collation
+  DataPath         = $paths.Data
+  LogPath          = $paths.Log
+  TempPath         = $paths.TempDB
+  BackupPath       = $paths.Backup
+  Features         = $features
+  SqlSvcAccount    = $svcAccount
+  SqlSvcPassword   = $svcPassword
+  ProductID        = $productKey
+  PerformVolumeMaintenanceTasks = <span class="cs">$true</span>
+}
+<span class="ck">Install-DbaInstance</span> @params -Confirm:<span class="cs">$false</span></pre>
+      <div class="alert alert-g" style="margin-top:.5rem;">
+        <strong>✓ Instant File Initialization</strong>
+        <code>PerformVolumeMaintenanceTasks = $true</code> — SQL Server darf Volume ohne Zero-Fill allokieren. Deutlich schneller bei Dateioperationen.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 8 — Deep Dive: Domain Detection
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Deep Dive · Konfiguration</div>
+  <h1>Domain Detection &amp; INI-Logik</h1>
+  <div class="cols2">
+    <div>
+      <p>Das Tool erkennt die Domäne automatisch beim Start und lädt domänenspezifische Vorgaben aus der INI — ohne Code-Änderung.</p>
+      <div class="steps" style="margin-top:.5rem;">
+        <div class="step"><div class="step-n">1</div><div class="step-body"><strong>Domäne erkennen</strong><p><code>[System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name</code> — NetBIOS-Name extrahiert</p></div></div>
+        <div class="step"><div class="step-n">2</div><div class="step-body"><strong>INI-Sektion suchen</strong><p>Erst <code>[DiskLayout_HLB]</code>, dann <code>[DiskLayout_Standard]</code> als Fallback</p></div></div>
+        <div class="step"><div class="step-n">3</div><div class="step-body"><strong>Collation, Monitoring, Gruppen</strong><p><code>Domain_HLB = SQL_Latin1...</code> — pro Key domänenspezifisch oder Standard-Fallback</p></div></div>
+        <div class="step"><div class="step-n">4</div><div class="step-body"><strong>Neue Domäne = nur INI</strong><p>Keine PowerShell-Änderung. Nur neuen <code>[DiskLayout_XYZ]</code> Block in settings.ini eintragen</p></div></div>
+      </div>
+    </div>
+    <div>
+      <pre><span class="cc"># settings.ini (Auszug)</span>
+<span class="ck">[DiskLayout_Standard]</span>
+DataDrive   = <span class="cs">G</span>
+LogDrive    = <span class="cs">H</span>
+TempDrive   = <span class="cs">I</span>
+BackupDrive = <span class="cs">F</span>
+InstallDrive= <span class="cs">C</span>
+
+<span class="ck">[Collations]</span>
+Standard       = <span class="cs">Latin1_General_CI_AS</span>
+Domain_HLB     = <span class="cs">SQL_Latin1_General_CP1_CI_AS</span>
+Domain_CONTOSO = <span class="cs">Latin1_General_CI_AS</span>
+
+<span class="ck">[SysadminGroups]</span>
+Domain_HLB     = <span class="cs">HLB\Fg_DC_SqlAdminAll_Mod</span>
+Domain_CONTOSO = <span class="cs">CONTOSO\Rg_SQL_Sysadmin</span>
+Standard       = <span class="cs"></span>  <span class="cc"># leer = kein Sysadmin</span>
+
+<span class="ck">[Monitoring]</span>
+Domain_HLB     = <span class="cs">2</span>  <span class="cc"># Vollständig</span>
+Domain_CONTOSO = <span class="cs">1</span>  <span class="cc"># Standard</span>
+DefaultType    = <span class="cs">1</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 9 — Deep Dive: PostInstall 17 Schritte
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Deep Dive · Phase 4</div>
+  <h1>PostInstall — 17 Schritte</h1>
+  <p style="margin-bottom:.5rem;">Vollautomatisch nach der Installation. Jeder Schritt protokolliert, jeder Fehler abgefangen.</p>
+
+  <div class="pi-grid">
+    <div class="pi-item"><div class="pi-num">1</div><div class="pi-lbl">NTFS-Berechtigungen</div></div>
+    <div class="pi-item"><div class="pi-num">2</div><div class="pi-lbl">Max Server Memory (90%)</div></div>
+    <div class="pi-item"><div class="pi-num">3</div><div class="pi-lbl">Optimize for Ad hoc</div></div>
+    <div class="pi-item"><div class="pi-num">4</div><div class="pi-lbl">Cost Threshold = 50</div></div>
+    <div class="pi-item"><div class="pi-num">5</div><div class="pi-lbl">MAXDOP (CPU-basiert)</div></div>
+    <div class="pi-item"><div class="pi-num">6</div><div class="pi-lbl">SQL Agent Autostart</div></div>
+    <div class="pi-item"><div class="pi-num">7</div><div class="pi-lbl">TempDB optimieren</div></div>
+    <div class="pi-item"><div class="pi-num">8</div><div class="pi-lbl">Recovery-Modell FULL</div></div>
+    <div class="pi-item"><div class="pi-num">9</div><div class="pi-lbl">SQL Browser deaktivieren</div></div>
+    <div class="pi-item"><div class="pi-num">10</div><div class="pi-lbl">AD Sysadmin-Gruppen</div></div>
+    <div class="pi-item"><div class="pi-num">11</div><div class="pi-lbl">SA-Obfuscation</div></div>
+    <div class="pi-item"><div class="pi-num">12</div><div class="pi-lbl">Monitoring-Key</div></div>
+    <div class="pi-item"><div class="pi-num">13</div><div class="pi-lbl">Instanz-Validierung</div></div>
+    <div class="pi-item"><div class="pi-num">14</div><div class="pi-lbl">Custom PostInstall.ps1</div></div>
+    <div class="pi-item"><div class="pi-num">15</div><div class="pi-lbl">Ola Hallengren Install</div></div>
+    <div class="pi-item"><div class="pi-num">16</div><div class="pi-lbl">Splunk konfigurieren</div></div>
+    <div class="pi-item"><div class="pi-num">17</div><div class="pi-lbl new">Firmen-SQL-Skripte *.sql</div></div>
+  </div>
+
+  <div class="cols2" style="margin-top:.65rem;">
+    <div class="alert alert-b">
+      <strong>ℹ Schritt 7 — TempDB</strong>
+      Dateianzahl CPU-basiert (max. 8), Größe aus INI. Spätere manuelle Anpassung entfällt.
+    </div>
+    <div class="alert alert-g">
+      <strong>✓ Schritt 17 — neu</strong>
+      Ersetzt die alten 57 manuellen SQL-Skripte. Alphabetisch, GO-Trenner, ContinueOnError.
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 10 — Deep Dive: Firmen-SQL-Skripte
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Deep Dive · Schritt 17</div>
+  <h1>Firmen-SQL-Scripts — Von 57 zu Wenigen</h1>
+  <div class="cols2">
+    <div>
+      <p>Früher 57 einzelne SQL-Skripte manuell nachinstalliert. Heute durch sqmSQLTool weitgehend abgedeckt — der Rest läuft automatisch.</p>
+      <table class="dtbl" style="margin-top:.5rem;">
+        <thead><tr><th>Früher (Skript)</th><th>Heute (sqmSQLTool)</th></tr></thead>
+        <tbody>
+          <tr><td><code>010_maxmemory.sql</code></td><td class="ok">Schritt 2 PostInstall</td></tr>
+          <tr><td><code>020_maxdop.sql</code></td><td class="ok">Schritt 5 PostInstall</td></tr>
+          <tr><td><code>030_ntfs.sql</code></td><td class="ok">Invoke-sqmNtfsSetup</td></tr>
+          <tr><td><code>040_sa_rename.sql</code></td><td class="ok">Invoke-sqmSaObfuscation</td></tr>
+          <tr><td><code>050_ola_jobs.sql</code></td><td class="ok">New-sqmOlaMaintenanceJobs</td></tr>
+          <tr><td>Firmen-Logins, LinkedServer</td><td class="warn">Schritt 17 (verbleibend)</td></tr>
+        </tbody>
+      </table>
+      <div class="alert alert-b" style="margin-top:.6rem;">
+        <strong>ℹ Standardpfad</strong>
+        <code>\\srv\SQLSources\Scripts\</code> — wird automatisch verwendet wenn <code>SqlScriptsPath</code> in settings.ini leer ist.
+      </div>
+    </div>
+    <div>
+      <pre><span class="cc"># Invoke-SqlScriptFolder — Ablauf</span>
+<span class="ck">$scripts</span> = Get-ChildItem <span class="cs">'\\srv\SQLSources\Scripts'</span> `
+            -Filter <span class="cs">'*.sql'</span> | Sort-Object Name
+
+<span class="cc"># Alphabetisch: 001_ bis 057_</span>
+<span class="ck">foreach</span> ($script in $scripts) {
+  <span class="ck">$sql</span> = Get-Content $script.FullName -Raw
+
+  <span class="cc"># GO-Trenner: Batches aufteilen</span>
+  <span class="ck">$batches</span> = $sql -split <span class="cs">'\r?\nGO\r?\n|\r?\nGO$'</span> |
+              Where-Object { $_.Trim() -ne <span class="cs">''</span> }
+
+  <span class="ck">foreach</span> ($batch in $batches) {
+    <span class="ck">try</span> {
+      Invoke-DbaQuery -SqlInstance $inst `
+          -Query $batch -ErrorAction Stop
+      log <span class="cs">"  OK: $($script.Name)"</span>
+    } <span class="ck">catch</span> {
+      log <span class="cs">"  WARN: $($script.Name) - $_"</span>
+      <span class="cc"># ContinueOnError - naechstes Skript</span>
+    }
+  }
+}</pre>
+      <div class="alert alert-w" style="margin-top:.4rem;">
+        <strong>⚡ Benennung empfohlen</strong>
+        <code>001_logins.sql</code>, <code>002_linkedserver.sql</code> — Reihenfolge über Dateiname steuerbar.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 11 — Deep Dive: SA-Obfuscation & Härtung
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Deep Dive · Schritte 10–11</div>
+  <h1>SA-Obfuscation &amp; Sysadmin-Gruppen</h1>
+  <div class="cols2">
+    <div>
+      <p>SA-Account ist das bekannteste Angriffsziel auf SQL Server. Das Tool verschleiert ihn automatisch — sicher, ohne manuellen Eingriff.</p>
+      <div class="steps" style="margin-top:.5rem;">
+        <div class="step"><div class="step-n">10</div><div class="step-body"><strong>AD-Gruppe zur sysadmin-Rolle</strong><p>Domain-spezifische Gruppe aus INI. Mindestens eine Gruppe muss zugewiesen sein — sonst kein sysadmin mehr nach SA-Umbenennung</p></div></div>
+        <div class="step"><div class="step-n">11</div><div class="step-body"><strong>SA umbenennen + Passwort</strong><p><code>Invoke-sqmSaObfuscation</code>: zufälliger Name, zufälliges 32-Zeichen Passwort. Name + Passwort nur im Rückgabeobjekt — sicher verwahren</p></div></div>
+      </div>
+      <div class="alert alert-r" style="margin-top:.6rem;">
+        <strong>⚠ Sicherheitsnetz eingebaut</strong>
+        Wenn keine AD-Gruppe zugewiesen werden konnte, wird SA-Obfuscation automatisch übersprungen — kein Zugriffsverlust möglich.
+      </div>
+    </div>
+    <div>
+      <table class="dtbl" style="margin-top:.3rem;">
+        <thead><tr><th>Angriff</th><th>Schutz</th></tr></thead>
+        <tbody>
+          <tr><td>Brute Force auf <code>sa</code></td><td class="ok">Login heißt nicht mehr <code>sa</code></td></tr>
+          <tr><td>Standard-Passwort</td><td class="ok">32-Zeichen Zufalls-Passwort</td></tr>
+          <tr><td>SA bleibt aktiv</td><td class="ok">Gesperrter Login (disabled)</td></tr>
+          <tr><td>Kein Admin-Zugang</td><td class="ok">AD-Gruppe vor Umbenennung gesetzt</td></tr>
+        </tbody>
+      </table>
+      <div class="alert alert-b" style="margin-top:.6rem;">
+        <strong>ℹ Nur wenn AD-Gruppe zugewiesen</strong>
+        <code>[SysadminGroups]</code> leer lassen = SA-Obfuscation wird übersprungen. Empfohlen: AD-Gruppe immer konfigurieren.
+      </div>
+      <div class="alert alert-g" style="margin-top:.5rem;">
+        <strong>✓ Schritt 13 — Validierung</strong>
+        <code>Get-sqmSQLInstanceCheck</code> prüft nach allen PostInstall-Schritten ob die Instanz healthy ist.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 12 — Connection to sqmSQLTool & AlwaysOn
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Toolchain</div>
+  <h1>Connection to sqmSQLTool &amp; AlwaysOn</h1>
+  <p>Das Setup Tool richtet die Basis ein. <strong style="color:#fff;">sqmSQLTool</strong> übernimmt danach den laufenden Betrieb — <strong style="color:#fff;">AlwaysOnSetup</strong> die HA-Konfiguration.</p>
+
+  <div class="cols2" style="margin-top:.7rem;">
+    <div>
+      <h3 style="color:#fff;margin-bottom:.5rem;">Nach dem Setup — sqmSQLTool-Aufgaben</h3>
+      <div class="card">
+        <div class="card-ico">💾</div>
+        <h3>Backup-Jobs</h3>
+        <p><code>New-sqmOlaUsrDbBackupJob</code> — FULL/DIFF/LOG-Jobs. Bereits in PostInstall Schritt 15 angelegt</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">🏥</div>
+        <h3>Monitoring &amp; Splunk</h3>
+        <p><code>Invoke-sqmSplunkConfiguration</code> — Monitoring-Key + Splunk-Forwarder. PostInstall Schritt 16</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">📜</div>
+        <h3>Laufender Betrieb</h3>
+        <p>Deadlock-Analyse, Health-Checks, Zertifikat-Management — alles nach dem initialen Setup</p>
+      </div>
+    </div>
+    <div>
+      <h3 style="color:#fff;margin-bottom:.5rem;">AlwaysOn nach dem Setup</h3>
+      <div class="card">
+        <div class="card-ico">🔷</div>
+        <h3>Voraussetzung: Gleiche Basis</h3>
+        <p>AlwaysOnSetup setzt voraus dass SQL Server auf allen Nodes identisch installiert ist — genau das liefert das Setup Tool</p>
+      </div>
+      <div class="card">
+        <div class="card-ico">🔄</div>
+        <h3>Typischer Workflow</h3>
+        <p>1. SQLSetupTool auf Node 1 + Node 2 → 2. AlwaysOnSetup für AG-Konfiguration → 3. sqmSQLTool für laufenden Betrieb</p>
+      </div>
+      <div class="alert alert-b" style="margin-top:.5rem;">
+        <strong>ℹ Collation-Konsistenz</strong>
+        Für AlwaysOn müssen alle Nodes <em>dieselbe</em> Collation haben. INI-basierte Vorbelegung stellt das sicher.
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:.7rem;display:flex;flex-wrap:wrap;gap:.3rem;">
+    <span class="xref">AlwaysOnSetup — HA-Konfiguration nach SQL-Installation</span>
+    <span class="xref">sqmSQLTool — DBA-Toolbox (Monitoring, Backup, Analyse)</span>
+    <span class="xref">SQLMigration — Produktivdatenbanken migrieren</span>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 13 — Scope & Boundaries
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Abgrenzung</div>
+  <h1>Scope &amp; Boundaries</h1>
+  <p>Was das Tool bewusst <strong style="color:#f87171;">nicht</strong> macht — und warum.</p>
+  <div class="cols2" style="margin-top:.7rem;">
+    <div>
+      <h3>Außerhalb des Scope</h3>
+      <table class="dtbl">
+        <thead><tr><th>Aufgabe</th><th>Zuständigkeit</th></tr></thead>
+        <tbody>
+          <tr><td>Laufwerke formatieren / zuweisen</td><td>Server-Team</td></tr>
+          <tr><td>Windows Server installieren</td><td>Server-Team</td></tr>
+          <tr><td>DNS-Einträge</td><td>Netzwerk-Team</td></tr>
+          <tr><td>Produktivdatenbanken migrieren</td><td>SQLMigration Tool</td></tr>
+          <tr><td>AlwaysOn konfigurieren</td><td>AlwaysOnSetup Tool</td></tr>
+          <tr><td>Firewall-Regeln</td><td>Netzwerk-Team</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <h3>Designentscheidungen</h3>
+      <div class="alert alert-b">
+        <strong>ℹ Kein Upgrade-Szenario</strong>
+        Das Tool installiert neu. In-Place-Upgrades (z.B. 2019 → 2022) sind ein eigenes Tool: <code>InplaceUpDate</code>.
+      </div>
+      <div class="alert alert-b" style="margin-top:.5rem;">
+        <strong>ℹ Lokale Robocopy-Kopie immer</strong>
+        Setup.exe läuft immer von lokalem Laufwerk — nie direkt vom Share. Stabiler, kein Timeout-Risiko.
+      </div>
+      <div class="alert alert-g" style="margin-top:.5rem;">
+        <strong>✓ Idempotentes PostInstall</strong>
+        Die meisten PostInstall-Schritte können mehrfach ausgeführt werden ohne Schaden anzurichten. Neustart = sicher.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 14 — Troubleshooting
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Fehlerbehandlung</div>
+  <h1>Troubleshooting</h1>
+  <table class="dtbl">
+    <thead><tr><th>Problem</th><th>Ursache</th><th>Lösung</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>Install-DbaInstance</code> Timeout</td>
+        <td>Setup dauert länger als erwartet (CU-Patch)</td>
+        <td class="ok">dbaTools wartet aktiv — kein manueller Eingriff. Bei echtem Timeout: Log unter <code>%TEMP%\dbatools</code></td>
+      </tr>
+      <tr>
+        <td>Robocopy fehlgeschlagen</td>
+        <td>Share nicht erreichbar oder keine Schreibrechte auf lokalem Laufwerk</td>
+        <td>UNC-Pfad in settings.ini prüfen. Laufwerk C: muss ausreichend Platz haben (~10 GB)</td>
+      </tr>
+      <tr>
+        <td>SA-Obfuscation übersprungen</td>
+        <td>Keine Sysadmin-Gruppe in <code>[SysadminGroups]</code> konfiguriert</td>
+        <td>Domain-Eintrag in settings.ini ergänzen. SA bleibt dann aktiv — manuell sichern</td>
+      </tr>
+      <tr>
+        <td>SQL-Skript schlägt fehl (Schritt 17)</td>
+        <td>Syntax-Fehler, fehlendes Objekt, Berechtigungsproblem im Firmen-Script</td>
+        <td class="ok">ContinueOnError: restliche Skripte laufen weiter. Fehlschlager im Log als WARN sichtbar</td>
+      </tr>
+      <tr>
+        <td>Falsche Collation gesetzt</td>
+        <td>Domäne nicht erkannt — Standard-Fallback verwendet</td>
+        <td>Domain-Erkennung im Log prüfen. Ggf. <code>Domain_XYZ</code> Eintrag in settings.ini ergänzen</td>
+      </tr>
+      <tr>
+        <td>dbaTools Import fehlgeschlagen</td>
+        <td>PSGallery nicht erreichbar, ShareBasePath fehlt</td>
+        <td>Offline-Kopie unter <code>[dbaTools] ShareBasePath</code> in settings.ini konfigurieren</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 15 — Summary
+══════════════════════════════════════════════════════ -->
+<section>
+  <div class="eyebrow">Zusammenfassung</div>
+  <h1>Summary &amp; Next Steps</h1>
+  <div class="cols2">
+    <div>
+      <h3>Key Takeaways</h3>
+      <div class="steps">
+        <div class="step"><div class="step-n">✓</div><div class="step-body"><strong>1–4h → 25–70 Minuten</strong><p>4 Phasen vollautomatisch — Robocopy, Install-DbaInstance, Komponenten, Härtung</p></div></div>
+        <div class="step"><div class="step-n">✓</div><div class="step-body"><strong>Zero-Touch für neue Domänen</strong><p>INI-Block hinzufügen — kein PowerShell-Code anfassen. Sofort einsatzbereit</p></div></div>
+        <div class="step"><div class="step-n">✓</div><div class="step-body"><strong>17-stufige Härtung garantiert</strong><p>NTFS, MaxMemory, MAXDOP, TempDB, SA-Obfuscation, Ola-Jobs, Firmen-Scripts</p></div></div>
+        <div class="step"><div class="step-n">✓</div><div class="step-body"><strong>57 SQL-Scripts obsolet</strong><p>sqmSQLTool deckt den Großteil ab. Rest läuft als Step 17 automatisch</p></div></div>
+        <div class="step"><div class="step-n">✓</div><div class="step-body"><strong>Basis für die gesamte Toolchain</strong><p>Einheitliche Basis für AlwaysOnSetup, sqmSQLTool, SQLMigration</p></div></div>
+      </div>
+    </div>
+    <div>
+      <h3>Links &amp; Ressourcen</h3>
+      <table class="dtbl">
+        <tbody>
+          <tr><td>GitHub</td><td><code>github.com/JankeUwe/SQLSetupTool</code></td></tr>
+          <tr><td>Quellstruktur</td><td><code>New-SqlSourceStructure.ps1</code></td></tr>
+          <tr><td>Website</td><td><code>www.powershelldba.de</code></td></tr>
+        </tbody>
+      </table>
+      <br>
+      <h3>Nächste Präsentationen</h3>
+      <div style="display:flex;flex-direction:column;gap:.4rem;margin-top:.3rem;">
+        <span class="xref">sqmSQLTool — DBA-Toolbox (Monitoring, Backup, Analyse)</span>
+        <span class="xref">AlwaysOnSetup — Availability Groups automatisch konfigurieren</span>
+        <span class="xref">DeadlockCollector — Automatische Deadlock-Erfassung</span>
+        <span class="xref">ReportDeploymentTool — SSRS Massendeployment</span>
+        <span class="xref">InplaceUpDate — In-Place SQL Server Upgrade</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div><!-- /slides -->
+</div><!-- /reveal -->
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script>
+Reveal.initialize({
+  hash: true,
+  slideNumber: 'c/t',
+  controls: true,
+  progress: true,
+  center: false,
+  transition: 'slide',
+  transitionSpeed: 'fast',
+  backgroundTransition: 'fade',
+  width: 1280,
+  height: 720,
+  margin: 0.04,
+  plugins: []
+});
+</script>
+</body>
+</html>
