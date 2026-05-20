@@ -221,6 +221,28 @@ Quelle: https://aka.ms/ssmsfullsetup
 "@
 }
 
+# Scripts (versionsneutral -- Firmen-SQL-Skripte fuer PostInstall)
+Write-Host ""
+Write-Host "  Scripts (Firmen-SQL-Skripte - versionsneutral)" -ForegroundColor White
+New-SourceFolder -Path (Join-Path $BasePath 'Scripts') -ReadmeText @"
+Firmen-SQL-Skripte fuer die PostInstall-Routine
+================================================
+Inhalt: *.sql-Dateien die nach jeder SQL-Server-Installation automatisch
+        ausgefuehrt werden. Typische Verwendung:
+          - Firmen-Logins anlegen
+          - Standard-LinkedServer registrieren
+          - Datenbank-Optionen setzen (model, msdb)
+          - Firmeneigene gespeicherte Prozeduren / Wartungsscripte
+
+Ausfuehrungsreihenfolge: Alphabetisch nach Dateiname.
+Empfohlene Benennung:    01_logins.sql, 02_linkedserver.sql, ...
+
+GO-Trenner werden unterstuetzt (Batch-Ausfuehrung).
+
+Konfiguration: settings.ini [PostInstall] SqlScriptsPath
+               Leer lassen = dieser Ordner wird automatisch verwendet.
+"@
+
 # TDP (versionsneutral)
 Write-Host ""
 Write-Host "  TDP (IBM Spectrum Protect - versionsneutral)" -ForegroundColor White

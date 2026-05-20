@@ -375,6 +375,15 @@ function Get-SetupConfig {
         $splunkEnabled = ($ini['PostInstall']['SplunkEnabled'].Trim() -eq 'true')
     }
 
+    # SqlScriptsPath: explizit aus INI oder Fallback auf <SourceShare>\Scripts
+    $sqlScriptsPath = ''
+    if ($ini.Contains('PostInstall') -and $ini['PostInstall'].Contains('SqlScriptsPath')) {
+        $sqlScriptsPath = $ini['PostInstall']['SqlScriptsPath'].Trim()
+    }
+    if ($sqlScriptsPath -eq '' -and $general['SourceShare']) {
+        $sqlScriptsPath = Join-Path $general['SourceShare'] 'Scripts'
+    }
+
     # -- [SysadminGroups] --------------------------------------------------------
     $sysadminGroups = @()
     if ($ini.Contains('SysadminGroups')) {
@@ -445,6 +454,7 @@ function Get-SetupConfig {
 
         # PostInstall-Optionen
         SplunkEnabled       = $splunkEnabled
+        SqlScriptsPath      = $sqlScriptsPath
 
         # Sysadmin-Gruppen (domänenspezifisch, fuer PostInstall)
         SysadminGroups      = $sysadminGroups

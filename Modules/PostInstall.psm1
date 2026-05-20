@@ -37,6 +37,10 @@ function Invoke-PostInstall {
     .PARAMETER SplunkEnabled
         Invoke-sqmSplunkConfiguration nach der Installation ausfuehren? (aus settings.ini [PostInstall]).
         Standard: $false.
+    .PARAMETER SqlScriptsPath
+        Ordner mit Firmen-SQL-Skripten (*.sql). Alle Dateien werden alphabetisch ausgefuehrt.
+        Leer oder Pfad nicht vorhanden = Schritt wird uebersprungen.
+        Standard: <SourceShare>\Scripts (aus settings.ini).
     .PARAMETER SysadminGroups
         AD-Gruppen die zur sysadmin-Rolle hinzugefuegt werden (aus settings.ini [SysadminGroups]).
         Leer = keine Gruppe zuweisen, SA-Obfuscation wird uebersprungen.
@@ -58,6 +62,7 @@ function Invoke-PostInstall {
         [bool]$SplunkEnabled = $false,
         [string[]]$SysadminGroups = @(),
         [string]$OlaSourcePath = '',
+        [string]$SqlScriptsPath = '',
         [string]$ComputerName = $env:COMPUTERNAME,
         [ScriptBlock]$LogCallback
     )
@@ -271,6 +276,22 @@ function Invoke-PostInstall {
             log "PostInstall: Splunk-Konfiguration deaktiviert (settings.ini [PostInstall] SplunkEnabled = false)."
         }
 
+        # ===== 17. Firmen-SQL-Skripte ausfuehren =====
+        if ($SqlScriptsPath -and (Test-Path $SqlScriptsPath)) {
+            log "PostInstall: Fuehre Firmen-SQL-Skripte aus ($SqlScriptsPath)..."
+            Invoke-SqlScriptFolder -SqlInstance $SqlInstance `
+                -ScriptsPath $SqlScriptsPath `
+                -LogCallback $LogCallback
+        }
+        else {
+            if ($SqlScriptsPath) {
+                log "PostInstall: SQL-Skripte-Ordner nicht gefunden - wird uebersprungen ($SqlScriptsPath)"
+            }
+            else {
+                log "PostInstall: Kein SQL-Skripte-Ordner konfiguriert - wird uebersprungen."
+            }
+        }
+
         log "PostInstall: Alle Tasks abgeschlossen"
     }
     catch {
@@ -358,4 +379,67 @@ function Invoke-CustomPostInstallScript {
     & $ScriptPath -SqlInstance $SqlInstance -LogCallback $LogCallback
 }
 
-Export-ModuleMember -Function Invoke-PostInstall
+function Invoke-SqlScriptFolder {
+    <#
+    .SYNOPSIS
+        Fuehrt alle *.sql-Dateien in einem Ordner alphabetisch gegen eine SQL-Instanz aus.
+    .DESCRIPTION
+        Liest alle *.sql-Dateien im angegebenen Ordner (keine Unterordner), sortiert sie
+        alphabetisch und fuehrt sie nacheinander via Invoke-DbaQuery aus.
+        Ein Fehler in einem Skript stoppt die Ausfuehrung und wird als WARN geloggt --
+        die restlichen Skripte werden dennoch versucht (ContinueOnError-Verhalten).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$SqlInstance,
+        [Parameter(Mandatory)][string]$ScriptsPath,
+        [ScriptBlock]$LogCallback
+    )
+
+    function log([string]$msg) {
+        if ($LogCallback) { & $LogCallback $msg }
+        else              { Write-Host $msg }
+    }
+
+    $scripts = Get-ChildItem -Path $ScriptsPath -Filter '*.sql' -File |
+               Sort-Object Name
+
+    if ($scripts.Count -eq 0) {
+        log "  Keine *.sql-Dateien in $ScriptsPath gefunden -- wird uebersprungen."
+        return
+    }
+
+    log "  $($scripts.Count) SQL-Skript(e) gefunden -- Ausfuehrung beginnt..."
+    $ok   = 0
+    $fail = 0
+
+    foreach ($script in $scripts) {
+        log "  --> $($script.Name)"
+        try {
+            $sql = Get-Content -Path $script.FullName -Raw -Encoding UTF8
+            # GO-Trenner unterstuetzen: Skript in Batches aufteilen
+            $batches = $sql -split '\r?\nGO\r?\n|\r?\nGO$' |
+                       Where-Object { $_.Trim() -ne '' }
+            foreach ($batch in $batches) {
+                Invoke-DbaQuery -SqlInstance $SqlInstance `
+                    -Query $batch `
+                    -MessagesToOutput $false `
+                    -ErrorAction Stop
+            }
+            log "      OK"
+            $ok++
+        }
+        catch {
+            log "      WARN: $($script.Name) fehlgeschlagen -- $_"
+            $fail++
+        }
+    }
+
+    if ($fail -eq 0) {
+        log "  Alle $ok SQL-Skript(e) erfolgreich ausgefuehrt."
+    }
+    else {
+        log "  Ergebnis: $ok OK / $fail fehlgeschlagen -- bitte Log pruefen."
+    }
+}
+
+Export-ModuleMember -Function Invoke-PostInstall, Invoke-SqlScriptFolder

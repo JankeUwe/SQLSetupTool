@@ -867,6 +867,7 @@ $($worker.ToString())
                                        -SplunkEnabled     $snapConfig.SplunkEnabled `
                                        -SysadminGroups    $snapConfig.SysadminGroups `
                                        -OlaSourcePath     $snapConfig.OlaSourcePath `
+                                       -SqlScriptsPath    $snapConfig.SqlScriptsPath `
                                        -PostInstallScript $snapConfig.PostInstallScript `
                                        -LogCallback       $logSB
                 }
