@@ -292,6 +292,16 @@ function Invoke-PostInstall {
             }
         }
 
+        # ===== 18. Setup-Abschlussbericht =====
+        log "PostInstall: Erstelle Setup-Abschlussbericht..."
+        try {
+            $reportFile = Invoke-sqmSetupReport -SqlInstance $SqlInstance -PassThru -ErrorAction Stop
+            log "  OK: Setup-Report erstellt: $reportFile"
+        }
+        catch {
+            log "  WARN: Setup-Report konnte nicht erstellt werden: $_"
+        }
+
         log "PostInstall: Alle Tasks abgeschlossen"
     }
     catch {
