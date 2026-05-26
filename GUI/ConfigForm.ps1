@@ -7,14 +7,330 @@
     Wird von MainForm.ps1 per dot-source geladen und via Show-ConfigForm aufgerufen.
 
     Tabs:
-      1  Quellpfade   - SourceShare, Module, Treiber, Opt. Komponenten, Wartung
-      2  SQLSources   - Struktur anlegen (Standard + FI-TS mit ZIP-Option)
-      3  Defaults     - DefaultVersion/Edition/Instance/Collation, Ports, PreInstall
+      1  Quellpfade   - PropertyGrid: SourceShare, Module, Treiber, Opt. Komponenten, Wartung
+      2  SQLSources   - Struktur anlegen (Standard + Ziel-Server-Variante mit ZIP-Option)
+      3  Instanz-Defaults - PropertyGrid: Version/Edition/Instance/Collation, Ports, PreInstall
 #>
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+# =============================================================================
+# C# TypeDefinitionen fuer PropertyGrid (einmalig, Guard verhindert Doppel-Load)
+# =============================================================================
+if (-not ([System.Management.Automation.PSTypeName]'SqlSetupTool.SqlPathConfig').Type) {
+    Add-Type -ReferencedAssemblies (
+        'System.Windows.Forms',
+        'System.Drawing',
+        'System.ComponentModel.Primitives'
+    ) -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Drawing.Design;
+using System.Windows.Forms;
+using System.Windows.Forms.Design;
+
+namespace SqlSetupTool
+{
+    // -------------------------------------------------------------------------
+    // FolderPathEditor: "..."-Button oeffnet FolderBrowserDialog
+    // -------------------------------------------------------------------------
+    public class FolderPathEditor : UITypeEditor
+    {
+        public override UITypeEditorEditStyle GetEditStyle(ITypeDescriptorContext context)
+        {
+            return UITypeEditorEditStyle.Modal;
+        }
+
+        public override object EditValue(ITypeDescriptorContext context,
+                                         IServiceProvider provider, object value)
+        {
+            var svc = provider?.GetService(typeof(IWindowsFormsEditorService))
+                      as IWindowsFormsEditorService;
+            if (svc == null) return value;
+
+            using (var dlg = new FolderBrowserDialog())
+            {
+                dlg.Description = "Ordner auswaehlen";
+                string current = value as string ?? string.Empty;
+                if (current != string.Empty)
+                    try { if (System.IO.Directory.Exists(current)) dlg.SelectedPath = current; }
+                    catch { }
+
+                if (dlg.ShowDialog() == DialogResult.OK)
+                    return dlg.SelectedPath;
+            }
+            return value;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // EditionConverter: EXKLUSIV - nur definierte Werte erlaubt
+    // -------------------------------------------------------------------------
+    public class EditionConverter : StringConverter
+    {
+        private static readonly string[] _values = new[]
+        {
+            "Developer", "Standard", "Enterprise",
+            "Developer-Standard", "Developer-Enterprise"
+        };
+
+        public override bool GetStandardValuesExclusive(ITypeDescriptorContext context)
+            => true;
+
+        public override bool GetStandardValuesSupported(ITypeDescriptorContext context)
+            => true;
+
+        public override StandardValuesCollection GetStandardValues(ITypeDescriptorContext context)
+            => new StandardValuesCollection(_values);
+    }
+
+    // -------------------------------------------------------------------------
+    // VersionConverter: non-exklusiv - Freitext moeglich, Vorschlaege aus PS befuellt
+    // -------------------------------------------------------------------------
+    public class VersionConverter : StringConverter
+    {
+        public static string[] Values = new string[0];
+
+        public override bool GetStandardValuesExclusive(ITypeDescriptorContext context)
+            => false;
+
+        public override bool GetStandardValuesSupported(ITypeDescriptorContext context)
+            => Values != null && Values.Length > 0;
+
+        public override StandardValuesCollection GetStandardValues(ITypeDescriptorContext context)
+            => new StandardValuesCollection(Values);
+    }
+
+    // -------------------------------------------------------------------------
+    // CollationConverter: non-exklusiv - Freitext moeglich, aus collations.txt befuellt
+    // -------------------------------------------------------------------------
+    public class CollationConverter : StringConverter
+    {
+        public static string[] Values = new string[0];
+
+        public override bool GetStandardValuesExclusive(ITypeDescriptorContext context)
+            => false;
+
+        public override bool GetStandardValuesSupported(ITypeDescriptorContext context)
+            => Values != null && Values.Length > 0;
+
+        public override StandardValuesCollection GetStandardValues(ITypeDescriptorContext context)
+            => new StandardValuesCollection(Values);
+    }
+
+    // =========================================================================
+    // SqlPathConfig - Datenklass fuer Tab 1
+    // =========================================================================
+    public class SqlPathConfig
+    {
+        // --- 1 - Allgemein ---
+        [Category("1 - Allgemein")]
+        [DisplayName("SourceShare")]
+        [Description("Zentraler Pfad der SQLSources-Freigabe. Alle anderen Pfade liegen typischerweise unterhalb dieses Verzeichnisses.")]
+        [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
+        public string SourceShare { get; set; } = string.Empty;
+
+        [Category("1 - Allgemein")]
+        [DisplayName("Versionen")]
+        [Description("Kommagetrennte Liste der verfuegbaren SQL-Server-Versionen. Beispiel: 2019,2022,2025")]
+        public string Versionen { get; set; } = "2019,2022,2025";
+
+        // --- 2 - Module ---
+        [Category("2 - Module")]
+        [DisplayName("DbaTools_ShareBasePath")]
+        [Description("Basisverzeichnis fuer dbaTools auf dem Share. Unterordner dbatools und dbatools.library werden automatisch erwartet.")]
+        [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
+        public string DbaTools_ShareBasePath { get; set; } = string.Empty;
+
+        [Category("2 - Module")]
+        [DisplayName("SqmSQLTool_ShareBasePath")]
+        [Description("Basisverzeichnis fuer sqmSQLTool auf dem Share. Unterordner sqmSQLTool mit sqmSQLTool.psd1 wird erwartet.")]
+        [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
+        public string SqmSQLTool_ShareBasePath { get; set; } = string.Empty;
+
+        // --- 3 - Treiber ---
+        [Category("3 - Treiber")]
+        [DisplayName("JDBC_Enabled")]
+        [Description("JDBC-Treiber nach SQL-Installation installieren.")]
+        public bool JDBC_Enabled { get; set; }
+
+        [Category("3 - Treiber")]
+        [DisplayName("JDBC_SourcePath")]
+        [Description("Quellpfad fuer den JDBC-Installer.")]
+        [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
+        public string JDBC_SourcePath { get; set; } = string.Empty;
+
+        [Category("3 - Treiber")]
+        [DisplayName("ODBC_Enabled")]
+        [Description("ODBC-Treiber nach SQL-Installation installieren.")]
+        public bool ODBC_Enabled { get; set; }
+
+        [Category("3 - Treiber")]
+        [DisplayName("ODBC_SourcePath")]
+        [Description("Quellpfad fuer den ODBC-Installer.")]
+        [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
+        public string ODBC_SourcePath { get; set; } = string.Empty;
+
+        [Category("3 - Treiber")]
+        [DisplayName("OLEDB_Enabled")]
+        [Description("OLEDB-Treiber nach SQL-Installation installieren.")]
+        public bool OLEDB_Enabled { get; set; }
+
+        [Category("3 - Treiber")]
+        [DisplayName("OLEDB_SourcePath")]
+        [Description("Quellpfad fuer den OLEDB-Installer.")]
+        [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
+        public string OLEDB_SourcePath { get; set; } = string.Empty;
+
+        [Category("3 - Treiber")]
+        [DisplayName("DB2_Enabled")]
+        [Description("IBM DB2-Treiber nach SQL-Installation installieren.")]
+        public bool DB2_Enabled { get; set; }
+
+        [Category("3 - Treiber")]
+        [DisplayName("DB2_SourcePath")]
+        [Description("Quellpfad fuer den IBM DB2-Treiber-Installer.")]
+        [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
+        public string DB2_SourcePath { get; set; } = string.Empty;
+
+        // --- 4 - Opt. Komponenten ---
+        [Category("4 - Opt. Komponenten")]
+        [DisplayName("SSRS_Enabled")]
+        [Description("SQL Server Reporting Services installieren.")]
+        public bool SSRS_Enabled { get; set; }
+
+        [Category("4 - Opt. Komponenten")]
+        [DisplayName("SSRS_SourcePath")]
+        [Description("Quellpfad fuer SSRS-Installer - pro Version ein eigener Unterordner: <SourceShare>\\SQL2019\\Reporting, \\SQL2022\\Reporting etc.")]
+        [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
+        public string SSRS_SourcePath { get; set; } = string.Empty;
+
+        [Category("4 - Opt. Komponenten")]
+        [DisplayName("SSAS_Enabled")]
+        [Description("SQL Server Analysis Services (SSAS) installieren.")]
+        public bool SSAS_Enabled { get; set; }
+
+        [Category("4 - Opt. Komponenten")]
+        [DisplayName("SSMS_Enabled")]
+        [Description("SQL Server Management Studio (SSMS) installieren.")]
+        public bool SSMS_Enabled { get; set; }
+
+        [Category("4 - Opt. Komponenten")]
+        [DisplayName("SSIS_Enabled")]
+        [Description("SQL Server Integration Services (SSIS) installieren.")]
+        public bool SSIS_Enabled { get; set; }
+
+        [Category("4 - Opt. Komponenten")]
+        [DisplayName("TDP_Enabled")]
+        [Description("Telemetrie/Diagnosepakete (TDP) installieren.")]
+        public bool TDP_Enabled { get; set; }
+
+        [Category("4 - Opt. Komponenten")]
+        [DisplayName("TDP_SourcePath")]
+        [Description("Quellpfad fuer den TDP-Installer.")]
+        [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
+        public string TDP_SourcePath { get; set; } = string.Empty;
+
+        [Category("4 - Opt. Komponenten")]
+        [DisplayName("PowerBI_Enabled")]
+        [Description("Power BI Report Server installieren.")]
+        public bool PowerBI_Enabled { get; set; }
+
+        [Category("4 - Opt. Komponenten")]
+        [DisplayName("PowerBI_SourcePath")]
+        [Description("Quellpfad fuer den Power BI Report Server Installer.")]
+        [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
+        public string PowerBI_SourcePath { get; set; } = string.Empty;
+
+        // --- 5 - Wartung ---
+        [Category("5 - Wartung")]
+        [DisplayName("Ola_SourcePath")]
+        [Description("Lokaler Pfad fuer Ola Hallengren Maintenance Solution. Leer = GitHub-Download.")]
+        [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
+        public string Ola_SourcePath { get; set; } = string.Empty;
+
+        [Category("5 - Wartung")]
+        [DisplayName("SqlScripts_Path")]
+        [Description("Pfad zu Firmen-SQL-Skripten die nach der Installation ausgefuehrt werden. Alle *.sql-Dateien werden alphabetisch ausgefuehrt.")]
+        [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
+        public string SqlScripts_Path { get; set; } = string.Empty;
+
+        [Category("5 - Wartung")]
+        [DisplayName("Secpol_Enabled")]
+        [Description("Windows-Sicherheitsrichtlinien nach der Installation anwenden.")]
+        public bool Secpol_Enabled { get; set; }
+
+        [Category("5 - Wartung")]
+        [DisplayName("Secpol_SourcePath")]
+        [Description("Ordner mit secedt.sdb und/oder import.inf fuer Secpol-Haertung.")]
+        [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
+        public string Secpol_SourcePath { get; set; } = string.Empty;
+    }
+
+    // =========================================================================
+    // SqlDefaultsConfig - Datenklass fuer Tab 3
+    // =========================================================================
+    public class SqlDefaultsConfig
+    {
+        // --- 1 - Vorgaben ---
+        [Category("1 - Vorgaben")]
+        [DisplayName("DefaultVersion")]
+        [Description("Standard-SQL-Server-Version fuer neue Installationen. Muss in der Versionsliste (Tab 1) enthalten sein.")]
+        [TypeConverter(typeof(VersionConverter))]
+        public string DefaultVersion { get; set; } = "2022";
+
+        [Category("1 - Vorgaben")]
+        [DisplayName("DefaultEdition")]
+        [Description("Vorgabe-Edition fuer neue SQL-Server-Installationen. Developer = kostenlos, kein Produktiveinsatz.")]
+        [TypeConverter(typeof(EditionConverter))]
+        public string DefaultEdition { get; set; } = "Developer";
+
+        [Category("1 - Vorgaben")]
+        [DisplayName("DefaultInstanceName")]
+        [Description("Standard-Instanzname. MSSQLServer = Default-Instanz (kein Instanznamen-Suffix).")]
+        public string DefaultInstanceName { get; set; } = "MSSQLServer";
+
+        [Category("1 - Vorgaben")]
+        [DisplayName("DefaultCollation")]
+        [Description("Standard-Sortierung (Collation) fuer neue SQL-Server-Instanzen.")]
+        [TypeConverter(typeof(CollationConverter))]
+        public string DefaultCollation { get; set; } = "Latin1_General_CI_AS";
+
+        // --- 2 - TCP-Ports ---
+        [Category("2 - TCP-Ports")]
+        [DisplayName("BasePort")]
+        [Description("TCP-Port fuer die Default-Instanz (MSSQLSERVER). Standard: 1433.")]
+        public int BasePort { get; set; } = 1433;
+
+        [Category("2 - TCP-Ports")]
+        [DisplayName("BrowserPort")]
+        [Description("UDP-Port fuer den SQL Browser Service. Standard: 1434.")]
+        public int BrowserPort { get; set; } = 1434;
+
+        [Category("2 - TCP-Ports")]
+        [DisplayName("PortIncrement")]
+        [Description("Portabstand fuer Named Instances. Named Instance N bekommt Port: BasePort + (N * Increment).")]
+        public int PortIncrement { get; set; } = 10;
+
+        // --- 3 - Pre-Install ---
+        [Category("3 - Pre-Install")]
+        [DisplayName("Format64kCheck")]
+        [Description("NTFS-Allokationseinheit aller konfigurierten Laufwerke vor der Installation pruefen. Bei Abweichung: Dialog mit OK/Abbrechen.")]
+        public bool Format64kCheck { get; set; } = true;
+
+        [Category("3 - Pre-Install")]
+        [DisplayName("SnapshotEnabled")]
+        [Description("Hinweis-Dialog anzeigen: Snapshot vor Installation empfohlen.")]
+        public bool SnapshotEnabled { get; set; }
+    }
+}
+'@
+}
+
+# =============================================================================
+# Show-ConfigForm
+# =============================================================================
 function Show-ConfigForm {
     <#
     .SYNOPSIS
@@ -81,7 +397,7 @@ function Show-ConfigForm {
     }
 
     # ---------------------------------------------------------------------------
-    # Hilfsfunktionen GUI (lokal deklariert - Standalone-faehig)
+    # Hilfsfunktionen WinForms (fuer Tab 2 - bleibt klassisches Layout)
     # ---------------------------------------------------------------------------
     function _Lbl {
         param($P, $T, $X, $Y, $W = 160, $H = 20)
@@ -154,18 +470,12 @@ function Show-ConfigForm {
     }
 
     function _StartBgScript {
-        <#
-        Fuehrt ein PS-Skript als Kindprozess in einem Runspace aus.
-        Alle Ausgaben gehen zeilenweise in $LogBox.
-        $DoneCb ist ein ScriptBlock der im GUI-Thread nach Abschluss ausgefuehrt wird.
-        #>
         param(
             [System.Windows.Forms.Form]$Form,
             [System.Windows.Forms.RichTextBox]$LogBox,
             [string[]]$ArgList,
             [scriptblock]$DoneCb
         )
-
         $rs = [runspacefactory]::CreateRunspace()
         $rs.ApartmentState = 'STA'
         $rs.ThreadOptions  = 'ReuseThread'
@@ -188,7 +498,6 @@ function Show-ConfigForm {
             }
             $_form.Invoke([System.Windows.Forms.MethodInvoker]$_doneCb)
         }) | Out-Null
-
         $ps.BeginInvoke() | Out-Null
     }
 
@@ -197,6 +506,18 @@ function Show-ConfigForm {
     # ---------------------------------------------------------------------------
     $ini       = _ReadIni -Path $IniPath
     $scriptDir = Split-Path (Split-Path $IniPath -Parent) -Parent   # <ToolRoot>
+
+    # ---------------------------------------------------------------------------
+    # collations.txt laden fuer CollationConverter
+    # ---------------------------------------------------------------------------
+    $collationsFile = Join-Path (Split-Path $IniPath -Parent) 'collations.txt'
+    if (Test-Path $collationsFile) {
+        [SqlSetupTool.CollationConverter]::Values = @(
+            Get-Content $collationsFile -Encoding UTF8 |
+            Where-Object { $_ -notmatch '^\s*#' -and $_.Trim() -ne '' } |
+            ForEach-Object { $_.Trim() }
+        )
+    }
 
     # ---------------------------------------------------------------------------
     # Formular
@@ -231,75 +552,49 @@ function Show-ConfigForm {
     $form.Controls.Add($btnCancel)
 
     # =========================================================================
-    # TAB 1: Quellpfade
+    # TAB 1: Quellpfade (PropertyGrid)
     # =========================================================================
     $tab1      = New-Object System.Windows.Forms.TabPage
     $tab1.Text = 'Quellpfade'
     $tabs.TabPages.Add($tab1)
 
-    $pnl1            = New-Object System.Windows.Forms.Panel
-    $pnl1.Dock       = 'Fill'
-    $pnl1.AutoScroll = $true
-    $tab1.Controls.Add($pnl1)
+    # SqlPathConfig mit INI-Werten befuellen
+    $pathConfig = [SqlSetupTool.SqlPathConfig]::new()
+    $pathConfig.SourceShare            = _IniVal 'General'    'SourceShare'
+    $pathConfig.Versionen              = _IniVal 'Versions'   'Available' '2019,2022,2025'
+    $pathConfig.DbaTools_ShareBasePath = _IniVal 'dbaTools'   'ShareBasePath'
+    $pathConfig.SqmSQLTool_ShareBasePath = _IniVal 'sqmSQLTool' 'ShareBasePath'
+    $pathConfig.JDBC_Enabled           = ((_IniVal 'Drivers' 'JDBC_Enabled')  -eq 'true')
+    $pathConfig.JDBC_SourcePath        = _IniVal 'Drivers' 'JDBC_SourcePath'
+    $pathConfig.ODBC_Enabled           = ((_IniVal 'Drivers' 'ODBC_Enabled')  -eq 'true')
+    $pathConfig.ODBC_SourcePath        = _IniVal 'Drivers' 'ODBC_SourcePath'
+    $pathConfig.OLEDB_Enabled          = ((_IniVal 'Drivers' 'OLEDB_Enabled') -eq 'true')
+    $pathConfig.OLEDB_SourcePath       = _IniVal 'Drivers' 'OLEDB_SourcePath'
+    $pathConfig.DB2_Enabled            = ((_IniVal 'Drivers' 'DB2_Enabled')   -eq 'true')
+    $pathConfig.DB2_SourcePath         = _IniVal 'Drivers' 'DB2_SourcePath'
+    $pathConfig.SSRS_Enabled           = ((_IniVal 'OptionalComponents' 'SSRS_Enabled')  -eq 'true')
+    $pathConfig.SSRS_SourcePath        = _IniVal 'OptionalComponents' 'SSRS_SourcePath'
+    $pathConfig.SSAS_Enabled           = ((_IniVal 'OptionalComponents' 'SSAS_Enabled')  -eq 'true')
+    $pathConfig.SSMS_Enabled           = ((_IniVal 'OptionalComponents' 'SSMS_Enabled')  -eq 'true')
+    $pathConfig.SSIS_Enabled           = ((_IniVal 'OptionalComponents' 'SSIS_Enabled')  -eq 'true')
+    $pathConfig.TDP_Enabled            = ((_IniVal 'OptionalComponents' 'TDP_Enabled')   -eq 'true')
+    $pathConfig.TDP_SourcePath         = _IniVal 'OptionalComponents' 'TDP_SourcePath'
+    $pathConfig.PowerBI_Enabled        = ((_IniVal 'OptionalComponents' 'PowerBI_Enabled') -eq 'true')
+    $pathConfig.PowerBI_SourcePath     = _IniVal 'OptionalComponents' 'PowerBI_SourcePath'
+    $pathConfig.Ola_SourcePath         = _IniVal 'Maintenance' 'OlaSourcePath'
+    $pathConfig.SqlScripts_Path        = _IniVal 'PostInstall' 'SqlScriptsPath'
+    $pathConfig.Secpol_Enabled         = ((_IniVal 'Secpol' 'Enabled') -eq 'true')
+    $pathConfig.Secpol_SourcePath      = _IniVal 'Secpol' 'SourcePath'
 
-    # -- Allgemein --
-    $gbGen = _Gb -P $pnl1 -T 'Allgemein & Installationsquellen' -X 5 -Y 5 -W 800 -H 87
-    _Lbl -P $gbGen -T 'SourceShare:' -X 10 -Y 24 -W 130
-    $tbSourceShare = _Tb  -P $gbGen -X 145 -Y 22 -W 575 -Def (_IniVal 'General' 'SourceShare')
-    _BrowseBtn -P $gbGen -X 725 -Y 22 -Tb $tbSourceShare | Out-Null
-    _Lbl -P $gbGen -T 'Versionen (kommagetrennt):' -X 10 -Y 56 -W 195
-    $tbVersions = _Tb -P $gbGen -X 210 -Y 54 -W 220 -Def (_IniVal 'Versions' 'Available' '2019,2022,2025')
-
-    # -- PowerShell Module --
-    $gbMod = _Gb -P $pnl1 -T 'PowerShell Module' -X 5 -Y 102 -W 800 -H 87
-    _Lbl -P $gbMod -T 'dbaTools ShareBasePath:' -X 10 -Y 24 -W 180
-    $tbDbaTools = _Tb -P $gbMod -X 195 -Y 22 -W 525 -Def (_IniVal 'dbaTools' 'ShareBasePath')
-    _BrowseBtn -P $gbMod -X 725 -Y 22 -Tb $tbDbaTools | Out-Null
-    _Lbl -P $gbMod -T 'sqmSQLTool ShareBasePath:' -X 10 -Y 56 -W 180
-    $tbSqm = _Tb -P $gbMod -X 195 -Y 54 -W 525 -Def (_IniVal 'sqmSQLTool' 'ShareBasePath')
-    _BrowseBtn -P $gbMod -X 725 -Y 54 -Tb $tbSqm | Out-Null
-
-    # -- Treiber --
-    $gbDrv = _Gb -P $pnl1 -T 'Treiber-Installation' -X 5 -Y 199 -W 800 -H 148
-    $chkJDBC  = _Chk -P $gbDrv -T 'JDBC'  -X 10 -Y 22 -Checked ((_IniVal 'Drivers' 'JDBC_Enabled')  -eq 'true') -W 60
-    $tbJDBC   = _Tb  -P $gbDrv -X 75 -Y 20 -W 645 -Def (_IniVal 'Drivers' 'JDBC_SourcePath')
-    _BrowseBtn -P $gbDrv -X 725 -Y 20 -Tb $tbJDBC | Out-Null
-    $chkODBC  = _Chk -P $gbDrv -T 'ODBC'  -X 10 -Y 50 -Checked ((_IniVal 'Drivers' 'ODBC_Enabled')  -eq 'true') -W 60
-    $tbODBC   = _Tb  -P $gbDrv -X 75 -Y 48 -W 645 -Def (_IniVal 'Drivers' 'ODBC_SourcePath')
-    _BrowseBtn -P $gbDrv -X 725 -Y 48 -Tb $tbODBC | Out-Null
-    $chkOLEDB = _Chk -P $gbDrv -T 'OLEDB' -X 10 -Y 78 -Checked ((_IniVal 'Drivers' 'OLEDB_Enabled') -eq 'true') -W 60
-    $tbOLEDB  = _Tb  -P $gbDrv -X 75 -Y 76 -W 645 -Def (_IniVal 'Drivers' 'OLEDB_SourcePath')
-    _BrowseBtn -P $gbDrv -X 725 -Y 76 -Tb $tbOLEDB | Out-Null
-    $chkDB2   = _Chk -P $gbDrv -T 'DB2'   -X 10 -Y 106 -Checked ((_IniVal 'Drivers' 'DB2_Enabled')   -eq 'true') -W 60
-    $tbDB2    = _Tb  -P $gbDrv -X 75 -Y 104 -W 645 -Def (_IniVal 'Drivers' 'DB2_SourcePath')
-    _BrowseBtn -P $gbDrv -X 725 -Y 104 -Tb $tbDB2 | Out-Null
-
-    # -- Optionale Komponenten --
-    $gbOpt = _Gb -P $pnl1 -T 'Optionale Komponenten' -X 5 -Y 357 -W 800 -H 170
-    $chkSSRS = _Chk -P $gbOpt -T 'SSRS' -X 10 -Y 22 -Checked ((_IniVal 'OptionalComponents' 'SSRS_Enabled') -eq 'true') -W 60
-    $tbSSRS  = _Tb  -P $gbOpt -X 75 -Y 20 -W 645 -Def (_IniVal 'OptionalComponents' 'SSRS_SourcePath')
-    _BrowseBtn -P $gbOpt -X 725 -Y 20 -Tb $tbSSRS | Out-Null
-    $chkSSAS = _Chk -P $gbOpt -T 'SSAS (Analysis Services)'  -X 10 -Y 50 -Checked ((_IniVal 'OptionalComponents' 'SSAS_Enabled') -eq 'true') -W 220
-    $chkSSMS = _Chk -P $gbOpt -T 'SSMS (Management Studio)' -X 10 -Y 78 -Checked ((_IniVal 'OptionalComponents' 'SSMS_Enabled') -eq 'true') -W 220
-    $chkSSIS = _Chk -P $gbOpt -T 'SSIS (Integration Svc.)'  -X 10 -Y 106 -Checked ((_IniVal 'OptionalComponents' 'SSIS_Enabled') -eq 'true') -W 220
-    $chkTDP  = _Chk -P $gbOpt -T 'TDP' -X 10 -Y 134 -Checked ((_IniVal 'OptionalComponents' 'TDP_Enabled') -eq 'true') -W 60
-    $tbTDP   = _Tb  -P $gbOpt -X 75 -Y 132 -W 645 -Def (_IniVal 'OptionalComponents' 'TDP_SourcePath')
-    _BrowseBtn -P $gbOpt -X 725 -Y 132 -Tb $tbTDP | Out-Null
-
-    # -- Wartung & Scripts --
-    $gbMaint = _Gb -P $pnl1 -T 'Wartung & Scripts' -X 5 -Y 537 -W 800 -H 122
-    _Lbl -P $gbMaint -T 'OlaHallengren-Pfad:' -X 10 -Y 24 -W 145
-    $tbOla = _Tb -P $gbMaint -X 160 -Y 22 -W 560 -Def (_IniVal 'Maintenance' 'OlaSourcePath')
-    _BrowseBtn -P $gbMaint -X 725 -Y 22 -Tb $tbOla | Out-Null
-    _Lbl -P $gbMaint -T 'SQL-Scripts-Pfad:' -X 10 -Y 54 -W 145
-    $tbScripts = _Tb -P $gbMaint -X 160 -Y 52 -W 560 -Def (_IniVal 'PostInstall' 'SqlScriptsPath')
-    _BrowseBtn -P $gbMaint -X 725 -Y 52 -Tb $tbScripts | Out-Null
-    $chkSecpol = _Chk -P $gbMaint -T 'Secpol' -X 10 -Y 84 -Checked ((_IniVal 'Secpol' 'Enabled') -eq 'true') -W 70
-    $tbSecpol  = _Tb  -P $gbMaint -X 85 -Y 82 -W 635 -Def (_IniVal 'Secpol' 'SourcePath')
-    _BrowseBtn -P $gbMaint -X 725 -Y 82 -Tb $tbSecpol | Out-Null
+    $propGrid1                = New-Object System.Windows.Forms.PropertyGrid
+    $propGrid1.Dock           = 'Fill'
+    $propGrid1.PropertySort   = [System.Windows.Forms.PropertySort]::Categorized
+    $propGrid1.HelpVisible    = $true
+    $propGrid1.SelectedObject = $pathConfig
+    $tab1.Controls.Add($propGrid1)
 
     # =========================================================================
-    # TAB 2: SQLSources anlegen
+    # TAB 2: SQLSources anlegen (WinForms - unveraendert ausser Gruppenbox-Titel)
     # =========================================================================
     $tab2      = New-Object System.Windows.Forms.TabPage
     $tab2.Text = 'SQLSources anlegen'
@@ -315,24 +610,24 @@ function Show-ConfigForm {
     $chkStdUpdateIni = _Chk -P $gbStd -T 'UpdateIni - Pfade in settings.ini aktualisieren' -X 10 -Y 86 -W 340
     $btnStd   = _Btn -P $gbStd -T 'Struktur anlegen' -X 635 -Y 84 -W 145
 
-    # --- FI-TS ---
-    $gbFiTS = _Gb -P $tab2 -T 'FI-TS Variante (W:\75084-Datenbanken\MSSQL\SQLSources)' -X 5 -Y 130 -W 815 -H 148
+    # --- Ziel-Server-Variante (ehemals FI-TS) ---
+    $gbFiTS = _Gb -P $tab2 -T 'Ziel-Server-Variante (lokal anlegen + als ZIP uebertragen)' -X 5 -Y 130 -W 815 -H 148
     _Lbl -P $gbFiTS -T 'BasePath:' -X 10 -Y 24 -W 75
     $tbFiTSPath = _Tb -P $gbFiTS -X 90 -Y 22 -W 625 -Def 'W:\75084-Datenbanken\MSSQL\SQLSources'
     _BrowseBtn -P $gbFiTS -X 720 -Y 22 -Tb $tbFiTSPath | Out-Null
     _Lbl -P $gbFiTS -T 'Versionen:' -X 10 -Y 56 -W 75
     $tbFiTSVer = _Tb -P $gbFiTS -X 90 -Y 54 -W 220 -Def (_IniVal 'Versions' 'Available' '2019,2022,2025')
-    $chkFiTSUpdateIni = _Chk -P $gbFiTS -T 'UpdateIni - W:\-Pfade in settings.ini schreiben' -X 10 -Y 86 -W 320
+    $chkFiTSUpdateIni = _Chk -P $gbFiTS -T 'UpdateIni - Zielpfade in settings.ini schreiben' -X 10 -Y 86 -W 320
     $chkFiTSZip = _Chk -P $gbFiTS -T 'Als ZIP packen:' -X 10 -Y 114 -W 115
-    $tbZipPath  = _Tb  -P $gbFiTS -X 128 -Y 112 -W 487 -Def 'C:\Temp\SQLSources-FiTS.zip' -Enabled $false
+    $tbZipPath  = _Tb  -P $gbFiTS -X 128 -Y 112 -W 487 -Def 'C:\Temp\SQLSources-Ziel.zip' -Enabled $false
     $chkFiTSZip.Add_CheckedChanged({
         $tbZipPath.Enabled = $chkFiTSZip.Checked
     })
-    $btnFiTS = _Btn -P $gbFiTS -T 'FiTS anlegen' -X 635 -Y 112 -W 145
+    $btnFiTS = _Btn -P $gbFiTS -T 'Struktur anlegen' -X 635 -Y 112 -W 145
 
     # --- Ausgabe ---
-    $gbLog2          = _Gb -P $tab2 -T 'Ausgabe' -X 5 -Y 290 -W 815 -H 285
-    $gbLog2.Anchor   = 'Top,Bottom,Left,Right'
+    $gbLog2        = _Gb -P $tab2 -T 'Ausgabe' -X 5 -Y 290 -W 815 -H 285
+    $gbLog2.Anchor = 'Top,Bottom,Left,Right'
     $cfgLogBox            = New-Object System.Windows.Forms.RichTextBox
     $cfgLogBox.Location   = New-Object System.Drawing.Point(10, 20)
     $cfgLogBox.Size       = New-Object System.Drawing.Size(790, 250)
@@ -344,30 +639,59 @@ function Show-ConfigForm {
     $cfgLogBox.Anchor     = 'Top,Bottom,Left,Right'
     $gbLog2.Controls.Add($cfgLogBox)
 
-    # Tab-Wechsel: Vorbelegung Versionen syncen
+    # =========================================================================
+    # TAB 3: Instanz-Defaults (PropertyGrid)
+    # =========================================================================
+    $tab3      = New-Object System.Windows.Forms.TabPage
+    $tab3.Text = 'Instanz-Defaults'
+    $tabs.TabPages.Add($tab3)
+
+    # VersionConverter initial befuellen
+    [SqlSetupTool.VersionConverter]::Values = @(
+        $pathConfig.Versionen -split '\s*,\s*' | Where-Object { $_ -ne '' }
+    )
+
+    # SqlDefaultsConfig mit INI-Werten befuellen
+    $defaultsConfig = [SqlSetupTool.SqlDefaultsConfig]::new()
+    $defaultsConfig.DefaultVersion     = _IniVal 'General' 'DefaultVersion' '2022'
+    $defaultsConfig.DefaultEdition     = _IniVal 'General' 'DefaultEdition' 'Developer'
+    $defaultsConfig.DefaultInstanceName = _IniVal 'General' 'DefaultInstanceName' 'MSSQLServer'
+    $defaultsConfig.DefaultCollation   = _IniVal 'General' 'DefaultCollation' 'Latin1_General_CI_AS'
+    $defaultsConfig.BasePort           = [int](_IniVal 'Ports' 'BasePort' '1433')
+    $defaultsConfig.BrowserPort        = [int](_IniVal 'Ports' 'BrowserPort' '1434')
+    $defaultsConfig.PortIncrement      = [int](_IniVal 'Ports' 'PortIncrement' '10')
+    $defaultsConfig.Format64kCheck     = ((_IniVal 'PreInstall' 'Format64kCheck' 'true') -ne 'false')
+    $defaultsConfig.SnapshotEnabled    = ((_IniVal 'PreInstall' 'SnapshotEnabled') -eq 'true')
+
+    $propGrid3                = New-Object System.Windows.Forms.PropertyGrid
+    $propGrid3.Dock           = 'Fill'
+    $propGrid3.PropertySort   = [System.Windows.Forms.PropertySort]::Categorized
+    $propGrid3.HelpVisible    = $true
+    $propGrid3.SelectedObject = $defaultsConfig
+    $tab3.Controls.Add($propGrid3)
+
+    # =========================================================================
+    # Tab-Wechsel: Versionen und BasePath syncen
+    # =========================================================================
     $tabs.Add_SelectedIndexChanged({
         if ($tabs.SelectedIndex -eq 1) {
-            if ($tbStdPath.Text -eq '' -or $tbStdPath.Text -eq (_IniVal 'General' 'SourceShare')) {
-                $tbStdPath.Text = $tbSourceShare.Text
-            }
-            $tbStdVer.Text  = $tbVersions.Text
-            $tbFiTSVer.Text = $tbVersions.Text
+            # Tab 2: Vorbelegung aus PropertyGrid-Objekt synchronisieren
+            if ($tbStdPath.Text -eq '') { $tbStdPath.Text = $pathConfig.SourceShare }
+            $tbStdVer.Text  = $pathConfig.Versionen
+            $tbFiTSVer.Text = $pathConfig.Versionen
         }
         if ($tabs.SelectedIndex -eq 2) {
-            # DefaultVersion ComboBox bevoelkern
-            $verList = $tbVersions.Text -split '\s*,\s*' | Where-Object { $_ -ne '' }
-            $cbDefVer.Items.Clear()
-            foreach ($v in $verList) { [void]$cbDefVer.Items.Add($v) }
-            $current = $tbDefVer_hidden.Text
-            if ($cbDefVer.Items.Contains($current)) {
-                $cbDefVer.SelectedItem = $current
-            } elseif ($cbDefVer.Items.Count -gt 0) {
-                $cbDefVer.SelectedIndex = 0
-            }
+            # Tab 3: VersionConverter mit aktuellen Versionen befuellen
+            [SqlSetupTool.VersionConverter]::Values = @(
+                $pathConfig.Versionen -split '\s*,\s*' | Where-Object { $_ -ne '' }
+            )
+            $propGrid3.Refresh()
         }
     })
 
-    # Standard-Struktur anlegen
+    # =========================================================================
+    # Tab 2: Standard-Struktur anlegen
+    # =========================================================================
     $btnStd.Add_Click({
         $scriptPath = Join-Path $scriptDir 'Scripts\New-SqlSourceStructure.ps1'
         if (-not (Test-Path $scriptPath)) {
@@ -400,7 +724,9 @@ function Show-ConfigForm {
         }
     })
 
-    # FI-TS-Struktur anlegen (+ optionales ZIP)
+    # =========================================================================
+    # Tab 2: Ziel-Server-Struktur anlegen (+ optionales ZIP)
+    # =========================================================================
     $btnFiTS.Add_Click({
         $scriptPath = Join-Path $scriptDir 'Scripts\New-SqlSourceStructure-FiTS.ps1'
         if (-not (Test-Path $scriptPath)) {
@@ -411,9 +737,9 @@ function Show-ConfigForm {
             return
         }
 
-        $doZip       = $chkFiTSZip.Checked
-        $zipDest     = $tbZipPath.Text.Trim()
-        $fitsBase    = $tbFiTSPath.Text.Trim()
+        $doZip    = $chkFiTSZip.Checked
+        $zipDest  = $tbZipPath.Text.Trim()
+        $fitsBase = $tbFiTSPath.Text.Trim()
 
         if ($doZip -and $zipDest -eq '') {
             [System.Windows.Forms.MessageBox]::Show(
@@ -493,106 +819,52 @@ function Show-ConfigForm {
     })
 
     # =========================================================================
-    # TAB 3: Instanz-Defaults
-    # =========================================================================
-    $tab3      = New-Object System.Windows.Forms.TabPage
-    $tab3.Text = 'Instanz-Defaults'
-    $tabs.TabPages.Add($tab3)
-
-    # -- Defaults --
-    $gbDef = _Gb -P $tab3 -T 'Instanz-Vorgaben' -X 5 -Y 5 -W 815 -H 145
-    _Lbl -P $gbDef -T 'Standard-Version:' -X 10 -Y 24 -W 145
-    # Verstecktes TextBox speichert den INI-Wert zum Vergleich bei Tab-Wechsel
-    $tbDefVer_hidden      = New-Object System.Windows.Forms.TextBox
-    $tbDefVer_hidden.Text = (_IniVal 'General' 'DefaultVersion' '2022')
-    $tbDefVer_hidden.Visible = $false
-    $tab3.Controls.Add($tbDefVer_hidden)
-
-    $cbDefVer          = New-Object System.Windows.Forms.ComboBox
-    $cbDefVer.Location = New-Object System.Drawing.Point(160, 22)
-    $cbDefVer.Size     = New-Object System.Drawing.Size(140, 24)
-    $cbDefVer.DropDownStyle = 'DropDownList'
-    # Vorbefuellen mit Versionen aus INI
-    $initVers = (_IniVal 'Versions' 'Available' '2019,2022,2025') -split '\s*,\s*' | Where-Object { $_ -ne '' }
-    foreach ($v in $initVers) { [void]$cbDefVer.Items.Add($v) }
-    $defVer = _IniVal 'General' 'DefaultVersion' '2022'
-    if ($cbDefVer.Items.Contains($defVer)) { $cbDefVer.SelectedItem = $defVer }
-    elseif ($cbDefVer.Items.Count -gt 0)   { $cbDefVer.SelectedIndex = 0 }
-    $tab3.Controls.Add($cbDefVer)
-
-    _Lbl -P $gbDef -T 'Standard-Edition:' -X 10 -Y 56 -W 145
-    $tbDefEd  = _Tb -P $gbDef -X 160 -Y 54 -W 200 -Def (_IniVal 'General' 'DefaultEdition' 'Developer')
-    _Lbl -P $gbDef -T 'Instanzname:' -X 10 -Y 88 -W 145
-    $tbDefInst = _Tb -P $gbDef -X 160 -Y 86 -W 200 -Def (_IniVal 'General' 'DefaultInstanceName' 'MSSQLServer')
-    _Lbl -P $gbDef -T 'Sortierung:' -X 10 -Y 120 -W 145
-    $tbDefColl = _Tb -P $gbDef -X 160 -Y 118 -W 360 -Def (_IniVal 'General' 'DefaultCollation' 'Latin1_General_CI_AS')
-
-    # -- Ports --
-    $gbPorts = _Gb -P $tab3 -T 'TCP-Ports' -X 5 -Y 160 -W 815 -H 90
-    _Lbl -P $gbPorts -T 'BasePort:' -X 10 -Y 24 -W 100
-    $tbBasePort = _Tb -P $gbPorts -X 115 -Y 22 -W 80 -Def (_IniVal 'Ports' 'BasePort' '1433')
-    _Lbl -P $gbPorts -T 'BrowserPort:' -X 210 -Y 24 -W 100
-    $tbBrwPort  = _Tb -P $gbPorts -X 315 -Y 22 -W 80 -Def (_IniVal 'Ports' 'BrowserPort' '1434')
-    _Lbl -P $gbPorts -T 'PortIncrement:' -X 410 -Y 24 -W 110
-    $tbPortIncr = _Tb -P $gbPorts -X 525 -Y 22 -W 80 -Def (_IniVal 'Ports' 'PortIncrement' '10')
-    _Lbl -P $gbPorts -T '(Named Instance N = BasePort + N * Increment)' -X 10 -Y 56 -W 450
-
-    # -- PreInstall --
-    $gbPre = _Gb -P $tab3 -T 'Pre-Install Pruefungen' -X 5 -Y 260 -W 815 -H 80
-    $chkFormat64k = _Chk -P $gbPre -T 'NTFS 64k-Format-Check (alle konfigurierten Laufwerke)' `
-        -X 10 -Y 22 -Checked ((_IniVal 'PreInstall' 'Format64kCheck') -ne 'false') -W 500
-    $chkSnapshot  = _Chk -P $gbPre -T 'Snapshot-Hinweis vor Installation anzeigen' `
-        -X 10 -Y 50 -Checked ((_IniVal 'PreInstall' 'SnapshotEnabled') -eq 'true') -W 400
-
-    # =========================================================================
     # Speichern-Handler
     # =========================================================================
     $btnSave.Add_Click({
         try {
-            # --- Tab 1: Quellpfade ---
-            _UpdateIni -IniPath $IniPath -Section 'General'   -Key 'SourceShare'  -Value $tbSourceShare.Text.Trim()
-            _UpdateIni -IniPath $IniPath -Section 'Versions'  -Key 'Available'    -Value $tbVersions.Text.Trim()
+            # --- Tab 1: Quellpfade aus $pathConfig ---
+            _UpdateIni -IniPath $IniPath -Section 'General'    -Key 'SourceShare'   -Value $pathConfig.SourceShare
+            _UpdateIni -IniPath $IniPath -Section 'Versions'   -Key 'Available'     -Value $pathConfig.Versionen
+            _UpdateIni -IniPath $IniPath -Section 'dbaTools'   -Key 'ShareBasePath' -Value $pathConfig.DbaTools_ShareBasePath
+            _UpdateIni -IniPath $IniPath -Section 'sqmSQLTool' -Key 'ShareBasePath' -Value $pathConfig.SqmSQLTool_ShareBasePath
 
-            _UpdateIni -IniPath $IniPath -Section 'dbaTools'   -Key 'ShareBasePath' -Value $tbDbaTools.Text.Trim()
-            _UpdateIni -IniPath $IniPath -Section 'sqmSQLTool' -Key 'ShareBasePath' -Value $tbSqm.Text.Trim()
+            _UpdateIni -IniPath $IniPath -Section 'Drivers' -Key 'JDBC_Enabled'    -Value $pathConfig.JDBC_Enabled.ToString().ToLower()
+            _UpdateIni -IniPath $IniPath -Section 'Drivers' -Key 'JDBC_SourcePath'  -Value $pathConfig.JDBC_SourcePath
+            _UpdateIni -IniPath $IniPath -Section 'Drivers' -Key 'ODBC_Enabled'    -Value $pathConfig.ODBC_Enabled.ToString().ToLower()
+            _UpdateIni -IniPath $IniPath -Section 'Drivers' -Key 'ODBC_SourcePath'  -Value $pathConfig.ODBC_SourcePath
+            _UpdateIni -IniPath $IniPath -Section 'Drivers' -Key 'OLEDB_Enabled'   -Value $pathConfig.OLEDB_Enabled.ToString().ToLower()
+            _UpdateIni -IniPath $IniPath -Section 'Drivers' -Key 'OLEDB_SourcePath' -Value $pathConfig.OLEDB_SourcePath
+            _UpdateIni -IniPath $IniPath -Section 'Drivers' -Key 'DB2_Enabled'     -Value $pathConfig.DB2_Enabled.ToString().ToLower()
+            _UpdateIni -IniPath $IniPath -Section 'Drivers' -Key 'DB2_SourcePath'   -Value $pathConfig.DB2_SourcePath
 
-            _UpdateIni -IniPath $IniPath -Section 'Drivers' -Key 'JDBC_Enabled'   -Value ($chkJDBC.Checked.ToString().ToLower())
-            _UpdateIni -IniPath $IniPath -Section 'Drivers' -Key 'JDBC_SourcePath' -Value $tbJDBC.Text.Trim()
-            _UpdateIni -IniPath $IniPath -Section 'Drivers' -Key 'ODBC_Enabled'   -Value ($chkODBC.Checked.ToString().ToLower())
-            _UpdateIni -IniPath $IniPath -Section 'Drivers' -Key 'ODBC_SourcePath' -Value $tbODBC.Text.Trim()
-            _UpdateIni -IniPath $IniPath -Section 'Drivers' -Key 'OLEDB_Enabled'  -Value ($chkOLEDB.Checked.ToString().ToLower())
-            _UpdateIni -IniPath $IniPath -Section 'Drivers' -Key 'OLEDB_SourcePath' -Value $tbOLEDB.Text.Trim()
-            _UpdateIni -IniPath $IniPath -Section 'Drivers' -Key 'DB2_Enabled'    -Value ($chkDB2.Checked.ToString().ToLower())
-            _UpdateIni -IniPath $IniPath -Section 'Drivers' -Key 'DB2_SourcePath'  -Value $tbDB2.Text.Trim()
+            _UpdateIni -IniPath $IniPath -Section 'OptionalComponents' -Key 'SSRS_Enabled'      -Value $pathConfig.SSRS_Enabled.ToString().ToLower()
+            _UpdateIni -IniPath $IniPath -Section 'OptionalComponents' -Key 'SSRS_SourcePath'    -Value $pathConfig.SSRS_SourcePath
+            _UpdateIni -IniPath $IniPath -Section 'OptionalComponents' -Key 'SSAS_Enabled'      -Value $pathConfig.SSAS_Enabled.ToString().ToLower()
+            _UpdateIni -IniPath $IniPath -Section 'OptionalComponents' -Key 'SSMS_Enabled'      -Value $pathConfig.SSMS_Enabled.ToString().ToLower()
+            _UpdateIni -IniPath $IniPath -Section 'OptionalComponents' -Key 'SSIS_Enabled'      -Value $pathConfig.SSIS_Enabled.ToString().ToLower()
+            _UpdateIni -IniPath $IniPath -Section 'OptionalComponents' -Key 'TDP_Enabled'       -Value $pathConfig.TDP_Enabled.ToString().ToLower()
+            _UpdateIni -IniPath $IniPath -Section 'OptionalComponents' -Key 'TDP_SourcePath'     -Value $pathConfig.TDP_SourcePath
+            _UpdateIni -IniPath $IniPath -Section 'OptionalComponents' -Key 'PowerBI_Enabled'   -Value $pathConfig.PowerBI_Enabled.ToString().ToLower()
+            _UpdateIni -IniPath $IniPath -Section 'OptionalComponents' -Key 'PowerBI_SourcePath' -Value $pathConfig.PowerBI_SourcePath
 
-            _UpdateIni -IniPath $IniPath -Section 'OptionalComponents' -Key 'SSRS_Enabled'   -Value ($chkSSRS.Checked.ToString().ToLower())
-            _UpdateIni -IniPath $IniPath -Section 'OptionalComponents' -Key 'SSRS_SourcePath' -Value $tbSSRS.Text.Trim()
-            _UpdateIni -IniPath $IniPath -Section 'OptionalComponents' -Key 'SSAS_Enabled'   -Value ($chkSSAS.Checked.ToString().ToLower())
-            _UpdateIni -IniPath $IniPath -Section 'OptionalComponents' -Key 'SSMS_Enabled'   -Value ($chkSSMS.Checked.ToString().ToLower())
-            _UpdateIni -IniPath $IniPath -Section 'OptionalComponents' -Key 'SSIS_Enabled'   -Value ($chkSSIS.Checked.ToString().ToLower())
-            _UpdateIni -IniPath $IniPath -Section 'OptionalComponents' -Key 'TDP_Enabled'    -Value ($chkTDP.Checked.ToString().ToLower())
-            _UpdateIni -IniPath $IniPath -Section 'OptionalComponents' -Key 'TDP_SourcePath'  -Value $tbTDP.Text.Trim()
+            _UpdateIni -IniPath $IniPath -Section 'Maintenance' -Key 'OlaSourcePath'  -Value $pathConfig.Ola_SourcePath
+            _UpdateIni -IniPath $IniPath -Section 'PostInstall' -Key 'SqlScriptsPath' -Value $pathConfig.SqlScripts_Path
+            _UpdateIni -IniPath $IniPath -Section 'Secpol'      -Key 'Enabled'        -Value $pathConfig.Secpol_Enabled.ToString().ToLower()
+            _UpdateIni -IniPath $IniPath -Section 'Secpol'      -Key 'SourcePath'     -Value $pathConfig.Secpol_SourcePath
 
-            _UpdateIni -IniPath $IniPath -Section 'Maintenance' -Key 'OlaSourcePath'  -Value $tbOla.Text.Trim()
-            _UpdateIni -IniPath $IniPath -Section 'PostInstall' -Key 'SqlScriptsPath' -Value $tbScripts.Text.Trim()
-            _UpdateIni -IniPath $IniPath -Section 'Secpol'      -Key 'Enabled'        -Value ($chkSecpol.Checked.ToString().ToLower())
-            _UpdateIni -IniPath $IniPath -Section 'Secpol'      -Key 'SourcePath'     -Value $tbSecpol.Text.Trim()
+            # --- Tab 3: Defaults aus $defaultsConfig ---
+            _UpdateIni -IniPath $IniPath -Section 'General' -Key 'DefaultVersion'      -Value $defaultsConfig.DefaultVersion
+            _UpdateIni -IniPath $IniPath -Section 'General' -Key 'DefaultEdition'      -Value $defaultsConfig.DefaultEdition
+            _UpdateIni -IniPath $IniPath -Section 'General' -Key 'DefaultInstanceName' -Value $defaultsConfig.DefaultInstanceName
+            _UpdateIni -IniPath $IniPath -Section 'General' -Key 'DefaultCollation'    -Value $defaultsConfig.DefaultCollation
 
-            # --- Tab 3: Instanz-Defaults ---
-            $selVer = if ($cbDefVer.SelectedItem) { $cbDefVer.SelectedItem.ToString() } else { '' }
-            if ($selVer -ne '') {
-                _UpdateIni -IniPath $IniPath -Section 'General' -Key 'DefaultVersion'      -Value $selVer
-            }
-            _UpdateIni -IniPath $IniPath -Section 'General' -Key 'DefaultEdition'      -Value $tbDefEd.Text.Trim()
-            _UpdateIni -IniPath $IniPath -Section 'General' -Key 'DefaultInstanceName'  -Value $tbDefInst.Text.Trim()
-            _UpdateIni -IniPath $IniPath -Section 'General' -Key 'DefaultCollation'     -Value $tbDefColl.Text.Trim()
+            _UpdateIni -IniPath $IniPath -Section 'Ports' -Key 'BasePort'      -Value $defaultsConfig.BasePort.ToString()
+            _UpdateIni -IniPath $IniPath -Section 'Ports' -Key 'BrowserPort'   -Value $defaultsConfig.BrowserPort.ToString()
+            _UpdateIni -IniPath $IniPath -Section 'Ports' -Key 'PortIncrement' -Value $defaultsConfig.PortIncrement.ToString()
 
-            _UpdateIni -IniPath $IniPath -Section 'Ports' -Key 'BasePort'      -Value $tbBasePort.Text.Trim()
-            _UpdateIni -IniPath $IniPath -Section 'Ports' -Key 'BrowserPort'   -Value $tbBrwPort.Text.Trim()
-            _UpdateIni -IniPath $IniPath -Section 'Ports' -Key 'PortIncrement' -Value $tbPortIncr.Text.Trim()
-
-            _UpdateIni -IniPath $IniPath -Section 'PreInstall' -Key 'Format64kCheck'  -Value ($chkFormat64k.Checked.ToString().ToLower())
-            _UpdateIni -IniPath $IniPath -Section 'PreInstall' -Key 'SnapshotEnabled' -Value ($chkSnapshot.Checked.ToString().ToLower())
+            _UpdateIni -IniPath $IniPath -Section 'PreInstall' -Key 'Format64kCheck'  -Value $defaultsConfig.Format64kCheck.ToString().ToLower()
+            _UpdateIni -IniPath $IniPath -Section 'PreInstall' -Key 'SnapshotEnabled' -Value $defaultsConfig.SnapshotEnabled.ToString().ToLower()
 
             $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
             $form.Close()
