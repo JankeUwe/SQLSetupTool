@@ -1,12 +1,17 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Legt die zentrale SQLSources-Verzeichnisstruktur fuer das SQL Server Setup Tool an.
+    Legt die zentrale SQLSources-Verzeichnisstruktur fuer FI-TS an.
 
 .DESCRIPTION
-    Erstellt den vollstaendigen Ordnerbaum unterhalb eines angegebenen Basispfades.
-    Enthaelt nicht nur SQL Server Installationsmedien, sondern alle Quellen, Module
-    und Tools die das SQL Server Setup Tool benoetigt.
+    FI-TS-Variante von New-SqlSourceStructure.ps1.
+    Verwendet W:\75084-Datenbanken\MSSQL\SQLSources als festen Standard-Zielpfad,
+    da das Skript nicht remote auf dem FI-TS-Server ausgefuehrt werden kann.
+
+    Typischer Workflow:
+      1. Skript lokal ausfuehren (ggf. mit -BasePath C:\Temp\FiTSTest zum Testen)
+      2. Erzeugten Ordner als ZIP verpacken
+      3. ZIP auf den Zielserver uebertragen und nach W:\75084-...\SQLSources entpacken
 
     Struktur (je SQL-Version):
         <Base>\SQL<Ver>\SQL_Install\
@@ -34,48 +39,50 @@
         <Base>\TDP\TSMConfig\
         <Base>\OlaHallengren\
 
-    Mit -UpdateIni werden die Pfade in settings.ini automatisch auf diese
-    Struktur aktualisiert.
+    Mit -UpdateIni werden die Pfade in settings.ini auf W:\75084-...\-Pfade gesetzt.
 
 .PARAMETER BasePath
-    Zielpfad. Standard: SourceShare aus settings.ini (z.B. \\srv\SQLSources).
-    Kann auch ein lokaler Pfad sein (z.B. C:\SQLSources).
+    Zielpfad. Standard: W:\75084-Datenbanken\MSSQL\SQLSources
+    Fuer lokale Tests: -BasePath C:\Temp\FiTSTest
 
 .PARAMETER Versions
-    Kommagetrennte SQL-Versionen. Standard: Wert aus settings.ini [Versions] Available.
+    Kommagetrennte SQL-Versionen. Standard: 2019,2022
 
 .PARAMETER IniPath
     Pfad zur settings.ini. Standard: <ScriptRoot>\..\Config\settings.ini
 
 .PARAMETER UpdateIni
-    Aktualisiert settings.ini automatisch mit den neuen Pfaden aus der erzeugten Struktur.
-    Betroffen: dbaTools, sqmSQLTool, Drivers, OptionalComponents (SSRS), Maintenance (Ola).
+    Aktualisiert settings.ini mit W:\75084-...\-Pfaden.
+    Betrifft: dbaTools, sqmSQLTool, Drivers, OptionalComponents (SSRS), Maintenance (Ola).
 
 .PARAMETER Force
     Ueberspringt die Bestaetigung bei bereits vorhandenem Basispfad.
 
 .EXAMPLE
-    .\New-SqlSourceStructure.ps1
-    Legt Struktur gemaess settings.ini an.
+    .\New-SqlSourceStructure-FiTS.ps1 -Force
+    Legt Struktur unter W:\75084-Datenbanken\MSSQL\SQLSources an.
 
 .EXAMPLE
-    .\New-SqlSourceStructure.ps1 -BasePath \\fileserver\SQLSources -UpdateIni
-    Legt Struktur an und aktualisiert settings.ini mit den neuen Pfaden.
+    .\New-SqlSourceStructure-FiTS.ps1 -BasePath C:\Temp\FiTSTest -Force
+    Lokaler Test: Struktur wird unter C:\Temp\FiTSTest angelegt.
 
 .EXAMPLE
-    .\New-SqlSourceStructure.ps1 -BasePath C:\SQLSources -Versions 2022,2025 -Force
-    Legt lokale Struktur nur fuer 2022 und 2025 an, ohne Rueckfrage.
+    .\New-SqlSourceStructure-FiTS.ps1 -Force -UpdateIni
+    Legt Struktur an und aktualisiert settings.ini mit W:\-Pfaden.
 #>
 param(
-    [string]  $BasePath  = '',
-    [string[]]$Versions  = @(),
-    [string]  $IniPath   = '',
-    [switch]  $UpdateIni,
-    [switch]  $Force
+    [string]   $BasePath  = 'W:\75084-Datenbanken\MSSQL\SQLSources',
+    [string[]] $Versions  = @('2019','2022'),
+    [string]   $IniPath   = '',
+    [switch]   $UpdateIni,
+    [switch]   $Force
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# FI-TS W:\-Pfad fuer -UpdateIni (immer der echte Zielpfad, unabhaengig von -BasePath)
+$FiTSBasePath = 'W:\75084-Datenbanken\MSSQL\SQLSources'
 
 # ---------------------------------------------------------------------------
 # Hilfsfunktion: INI-Datei einlesen
@@ -151,51 +158,34 @@ function Update-IniValue {
 }
 
 # ---------------------------------------------------------------------------
-# 1. INI einlesen
+# 1. INI einlesen (nur fuer -UpdateIni und optionale Versionsuebernahme)
 # ---------------------------------------------------------------------------
 if ($IniPath -eq '') {
     $IniPath = Join-Path $PSScriptRoot '..\Config\settings.ini'
 }
 $IniPath = [System.IO.Path]::GetFullPath($IniPath)
 
-if (-not (Test-Path $IniPath)) {
-    Write-Warning "settings.ini nicht gefunden: $IniPath"
-    Write-Warning "Bitte -IniPath angeben oder -BasePath und -Versions explizit setzen."
-    exit 1
-}
-$ini = Read-IniFile -Path $IniPath
-
-# ---------------------------------------------------------------------------
-# 2. Parameter aus INI ergaenzen
-# ---------------------------------------------------------------------------
-if ($BasePath -eq '') {
-    $BasePath = $ini['General']['SourceShare']
-    if (-not $BasePath) {
-        Write-Error "SourceShare nicht in settings.ini gefunden. Bitte -BasePath angeben."
+$ini = $null
+if (Test-Path $IniPath) {
+    $ini = Read-IniFile -Path $IniPath
+} else {
+    if ($UpdateIni) {
+        Write-Error "settings.ini nicht gefunden: $IniPath`nBitte -IniPath angeben oder -UpdateIni weglassen."
         exit 1
     }
-}
-
-if ($Versions.Count -eq 0) {
-    $raw = $ini['Versions']['Available']
-    if ($raw) {
-        $Versions = $raw -split '\s*,\s*' | Where-Object { $_ -ne '' }
-    } else {
-        $Versions = @('2019','2022','2025')
-        Write-Warning "Keine Versionen in settings.ini gefunden. Verwende Standard: $($Versions -join ', ')"
-    }
+    Write-Warning "settings.ini nicht gefunden: $IniPath - wird ignoriert (kein -UpdateIni)."
 }
 
 # ---------------------------------------------------------------------------
-# 3. Zusammenfassung und Bestaetigung
+# 2. Zusammenfassung und Bestaetigung
 # ---------------------------------------------------------------------------
 Write-Host ''
-Write-Host 'SQL Server Setup Tool - SQLSources Struktur anlegen' -ForegroundColor Cyan
-Write-Host '=====================================================' -ForegroundColor Cyan
+Write-Host 'SQL Server Setup Tool - SQLSources Struktur anlegen (FI-TS)' -ForegroundColor Cyan
+Write-Host '==============================================================' -ForegroundColor Cyan
 Write-Host "  Basispfad  : $BasePath"
 Write-Host "  Versionen  : $($Versions -join ', ')"
 if ($UpdateIni) {
-    Write-Host "  INI-Update : JA - settings.ini wird aktualisiert" -ForegroundColor Yellow
+    Write-Host "  INI-Update : JA - settings.ini wird auf W:\-Pfade aktualisiert" -ForegroundColor Yellow
 }
 Write-Host ''
 
@@ -216,7 +206,7 @@ if (Test-Path $BasePath) {
 }
 
 # ---------------------------------------------------------------------------
-# 4. SQL Server Installationsquellen (je Version)
+# 3. SQL Server Installationsquellen (je Version)
 # ---------------------------------------------------------------------------
 Write-Host ''
 Write-Host '--- SQL Server Installationsmedien ---' -ForegroundColor White
@@ -283,7 +273,7 @@ Quelle: https://aka.ms/ssmsfullsetup
 }
 
 # ---------------------------------------------------------------------------
-# 5. Treiber (versionsneutral)
+# 4. Treiber (versionsneutral)
 # ---------------------------------------------------------------------------
 Write-Host ''
 Write-Host '--- Treiber ---' -ForegroundColor White
@@ -357,7 +347,7 @@ Quelle: IBM Fix Central / IBM Passport Advantage
 "@
 
 # ---------------------------------------------------------------------------
-# 6. PowerShell Module (versionsneutral)
+# 5. PowerShell Module (versionsneutral)
 # ---------------------------------------------------------------------------
 Write-Host ''
 Write-Host '--- PowerShell Module ---' -ForegroundColor White
@@ -419,7 +409,7 @@ Quelle: https://github.com/JankeUwe/sqmSQLTool
 "@
 
 # ---------------------------------------------------------------------------
-# 7. GUI-Tools (versionsneutral)
+# 6. GUI-Tools (versionsneutral)
 # ---------------------------------------------------------------------------
 Write-Host ''
 Write-Host '--- Tools ---' -ForegroundColor White
@@ -486,7 +476,7 @@ Quelle: https://github.com/JankeUwe/SSRSDeploymentTool
 "@
 
 # ---------------------------------------------------------------------------
-# 8. TDP - IBM Spectrum Protect (versionsneutral)
+# 7. TDP - IBM Spectrum Protect (versionsneutral)
 # ---------------------------------------------------------------------------
 Write-Host ''
 Write-Host '--- TDP / Wartung ---' -ForegroundColor White
@@ -551,7 +541,7 @@ HINWEIS: Diese Dateien sind umgebungsspezifisch. Nicht oeffentlich!
 "@
 
 # ---------------------------------------------------------------------------
-# 8b. Security Policy (versionsneutral)
+# 7b. Security Policy (versionsneutral)
 # ---------------------------------------------------------------------------
 New-SourceFolder -Path (Join-Path $BasePath 'Secpol') -ReadmeText @"
 Windows Security Policy - SQL Server Haertung
@@ -579,7 +569,7 @@ HINWEIS: Diese Datei ist maschinenspezifisch und enthaelt ggf. alle lokalen
 "@
 
 # ---------------------------------------------------------------------------
-# 9. Ola Hallengren Maintenance Solution (versionsneutral)
+# 8. Ola Hallengren Maintenance Solution (versionsneutral)
 # ---------------------------------------------------------------------------
 New-SourceFolder -Path (Join-Path $BasePath 'OlaHallengren') -ReadmeText @"
 Ola Hallengren Maintenance Solution
@@ -599,7 +589,7 @@ Quelle: https://ola.hallengren.com
 "@
 
 # ---------------------------------------------------------------------------
-# 10. Post-Install SQL-Skripte (versionsneutral)
+# 9. Post-Install SQL-Skripte (versionsneutral)
 # ---------------------------------------------------------------------------
 New-SourceFolder -Path (Join-Path $BasePath 'Scripts') -ReadmeText @"
 Firmen-SQL-Skripte fuer die PostInstall-Routine
@@ -621,46 +611,49 @@ settings.ini: [PostInstall] SqlScriptsPath = <SQLSources>\Scripts
 "@
 
 # ---------------------------------------------------------------------------
-# 11. Optional: settings.ini aktualisieren
+# 10. Optional: settings.ini aktualisieren (immer W:\-Pfade)
 # ---------------------------------------------------------------------------
 if ($UpdateIni) {
     Write-Host ''
-    Write-Host '--- settings.ini aktualisieren ---' -ForegroundColor Yellow
+    Write-Host '--- settings.ini aktualisieren (W:\-Pfade) ---' -ForegroundColor Yellow
 
-    $defaultVer = if ($ini['General']['DefaultVersion']) { $ini['General']['DefaultVersion'] } else { $Versions[0] }
+    $defaultVer = $Versions[0]
+    if ($ini -and $ini['General'] -and $ini['General']['DefaultVersion']) {
+        $defaultVer = $ini['General']['DefaultVersion']
+    }
 
     # dbaTools ShareBasePath
-    Update-IniValue -IniPath $IniPath -Section 'dbaTools'   -Key 'ShareBasePath' -Value "$BasePath\Modules"
+    Update-IniValue -IniPath $IniPath -Section 'dbaTools'   -Key 'ShareBasePath' -Value "$FiTSBasePath\Modules"
 
     # sqmSQLTool ShareBasePath
-    Update-IniValue -IniPath $IniPath -Section 'sqmSQLTool' -Key 'ShareBasePath' -Value "$BasePath\Modules"
+    Update-IniValue -IniPath $IniPath -Section 'sqmSQLTool' -Key 'ShareBasePath' -Value "$FiTSBasePath\Modules"
 
     # Treiber-Pfade
-    Update-IniValue -IniPath $IniPath -Section 'Drivers'    -Key 'JDBC_SourcePath'  -Value "$BasePath\Drivers\JDBC"
-    Update-IniValue -IniPath $IniPath -Section 'Drivers'    -Key 'ODBC_SourcePath'  -Value "$BasePath\Drivers\ODBC"
-    Update-IniValue -IniPath $IniPath -Section 'Drivers'    -Key 'OLEDB_SourcePath' -Value "$BasePath\Drivers\OLEDB"
-    Update-IniValue -IniPath $IniPath -Section 'Drivers'    -Key 'DB2_SourcePath'   -Value "$BasePath\Drivers\DB2"
+    Update-IniValue -IniPath $IniPath -Section 'Drivers'    -Key 'JDBC_SourcePath'  -Value "$FiTSBasePath\Drivers\JDBC"
+    Update-IniValue -IniPath $IniPath -Section 'Drivers'    -Key 'ODBC_SourcePath'  -Value "$FiTSBasePath\Drivers\ODBC"
+    Update-IniValue -IniPath $IniPath -Section 'Drivers'    -Key 'OLEDB_SourcePath' -Value "$FiTSBasePath\Drivers\OLEDB"
+    Update-IniValue -IniPath $IniPath -Section 'Drivers'    -Key 'DB2_SourcePath'   -Value "$FiTSBasePath\Drivers\DB2"
 
     # SSRS-SourcePath (auf Default-Version)
-    Update-IniValue -IniPath $IniPath -Section 'OptionalComponents' -Key 'SSRS_SourcePath' -Value "$BasePath\SQL$defaultVer\Reporting"
+    Update-IniValue -IniPath $IniPath -Section 'OptionalComponents' -Key 'SSRS_SourcePath' -Value "$FiTSBasePath\SQL$defaultVer\Reporting"
 
-    # TDP-SourcePath (auskommentierte Zeile aktivieren und setzen)
-    Update-IniValue -IniPath $IniPath -Section 'OptionalComponents' -Key 'TDP_SourcePath'  -Value "$BasePath\TDP"
+    # TDP-SourcePath
+    Update-IniValue -IniPath $IniPath -Section 'OptionalComponents' -Key 'TDP_SourcePath'  -Value "$FiTSBasePath\TDP"
 
     # Ola Hallengren
-    Update-IniValue -IniPath $IniPath -Section 'Maintenance'        -Key 'OlaSourcePath'   -Value "$BasePath\OlaHallengren"
+    Update-IniValue -IniPath $IniPath -Section 'Maintenance'        -Key 'OlaSourcePath'   -Value "$FiTSBasePath\OlaHallengren"
 
     # Security Policy
-    Update-IniValue -IniPath $IniPath -Section 'Secpol'             -Key 'SourcePath'       -Value "$BasePath\Secpol"
+    Update-IniValue -IniPath $IniPath -Section 'Secpol'             -Key 'SourcePath'       -Value "$FiTSBasePath\Secpol"
 
     Write-Host '  settings.ini aktualisiert.' -ForegroundColor Green
 }
 
 # ---------------------------------------------------------------------------
-# 12. Zusammenfassung
+# 11. Zusammenfassung
 # ---------------------------------------------------------------------------
 Write-Host ''
-Write-Host '=====================================================' -ForegroundColor Cyan
+Write-Host '==============================================================' -ForegroundColor Cyan
 Write-Host 'Fertig. Angelegte Struktur:' -ForegroundColor Green
 Write-Host ''
 
@@ -676,7 +669,7 @@ Write-Host ''
 Write-Host 'Naechste Schritte:' -ForegroundColor Cyan
 Write-Host "  1. SQL Server ISO entpacken nach:  $BasePath\SQL<Version>\SQL_Install\" -ForegroundColor White
 Write-Host "  2. CU ablegen in:                  $BasePath\SQL<Version>\SQL_Install\Updates\" -ForegroundColor White
-Write-Host "  3. SSRS-Installer ablegen in:      $BasePath\SQL<Version>\Reporting\" -ForegroundColor White
+Write-Host "  3. SSRS-Installer ablegen nach:    $BasePath\SQL<Version>\Reporting\" -ForegroundColor White
 Write-Host "  4. SSMS-Installer ablegen in:      $BasePath\SQL<Version>\Management\" -ForegroundColor White
 Write-Host "  5. dbaTools entpacken nach:        $BasePath\Modules\dbaTools\" -ForegroundColor White
 Write-Host "  6. sqmSQLTool entpacken nach:      $BasePath\Modules\sqmSQLTool\" -ForegroundColor White
@@ -684,8 +677,11 @@ Write-Host "  7. JDBC/ODBC/OLE DB ablegen in:    $BasePath\Drivers\<Treiber>\" -
 Write-Host "  8. TDP-Config ablegen in:          $BasePath\TDP\ConfigFile\" -ForegroundColor White
 Write-Host "  9. Secpol exportieren nach:        $BasePath\Secpol\" -ForegroundColor White
 Write-Host " 10. Tools ablegen in:               $BasePath\Tools\<Tool>\" -ForegroundColor White
+Write-Host ''
+Write-Host 'ZIP-Tipp fuer FI-TS-Uebertragung:' -ForegroundColor Cyan
+Write-Host "  Compress-Archive -Path '$BasePath\*' -DestinationPath 'C:\Temp\SQLSources-FiTS.zip'" -ForegroundColor White
 if (-not $UpdateIni) {
     Write-Host ''
-    Write-Host "  Tipp: Starte mit -UpdateIni um settings.ini automatisch auf diese Pfade zu aktualisieren." -ForegroundColor Cyan
+    Write-Host "  Tipp: Starte mit -UpdateIni um settings.ini auf W:\-Pfade zu aktualisieren." -ForegroundColor Cyan
 }
 Write-Host ''
