@@ -1,23 +1,37 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Legt die SQLSources-Verzeichnisstruktur fuer das SQL Server Setup Tool an.
+    Legt die zentrale SQLSources-Verzeichnisstruktur fuer das SQL Server Setup Tool an.
 
 .DESCRIPTION
-    Erstellt den erwarteten Ordnerbaum unterhalb eines angegebenen Basispfades.
-    Liest die verfuegbaren Versionen aus settings.ini (Versions\Available) oder
-    verwendet den Parameter -Versions.
+    Erstellt den vollstaendigen Ordnerbaum unterhalb eines angegebenen Basispfades.
+    Enthaelt nicht nur SQL Server Installationsmedien, sondern alle Quellen, Module
+    und Tools die das SQL Server Setup Tool benoetigt.
 
-    Struktur je Version:
+    Struktur (je SQL-Version):
         <Base>\SQL<Ver>\SQL_Install\
         <Base>\SQL<Ver>\SQL_Install\Updates\
         <Base>\SQL<Ver>\Reporting\
         <Base>\SQL<Ver>\Management\
 
-    Versionsunabhaengig:
+    Versionsneutrale Abschnitte:
+        <Base>\Drivers\JDBC\
+        <Base>\Drivers\ODBC\
+        <Base>\Drivers\DB2\
+        <Base>\Modules\dbaTools\
+        <Base>\Modules\dbatools.library\
+        <Base>\Modules\sqmSQLTool\
+        <Base>\Tools\AlwaysOnSetup\
+        <Base>\Tools\SQLSetupTool\
+        <Base>\Tools\SQLMigration\
+        <Base>\Tools\InplaceUpgrade\
+        <Base>\Tools\SSRSDeployment\
+        <Base>\Scripts\
         <Base>\TDP\
+        <Base>\OlaHallengren\
 
-    Jeder Ordner erhaelt eine README.txt mit Hinweis was dort abgelegt werden soll.
+    Mit -UpdateIni werden die Pfade in settings.ini automatisch auf diese
+    Struktur aktualisiert.
 
 .PARAMETER BasePath
     Zielpfad. Standard: SourceShare aus settings.ini (z.B. \\srv\SQLSources).
@@ -29,6 +43,10 @@
 .PARAMETER IniPath
     Pfad zur settings.ini. Standard: <ScriptRoot>\..\Config\settings.ini
 
+.PARAMETER UpdateIni
+    Aktualisiert settings.ini automatisch mit den neuen Pfaden aus der erzeugten Struktur.
+    Betroffen: dbaTools, sqmSQLTool, Drivers, OptionalComponents (SSRS), Maintenance (Ola).
+
 .PARAMETER Force
     Ueberspringt die Bestaetigung bei bereits vorhandenem Basispfad.
 
@@ -37,18 +55,19 @@
     Legt Struktur gemaess settings.ini an.
 
 .EXAMPLE
-    .\New-SqlSourceStructure.ps1 -BasePath \\fileserver\SQLSources
-    Legt Struktur auf dem angegebenen Share an.
+    .\New-SqlSourceStructure.ps1 -BasePath \\fileserver\SQLSources -UpdateIni
+    Legt Struktur an und aktualisiert settings.ini mit den neuen Pfaden.
 
 .EXAMPLE
     .\New-SqlSourceStructure.ps1 -BasePath C:\SQLSources -Versions 2022,2025 -Force
     Legt lokale Struktur nur fuer 2022 und 2025 an, ohne Rueckfrage.
 #>
 param(
-    [string]$BasePath  = '',
-    [string[]]$Versions = @(),
-    [string]$IniPath   = '',
-    [switch]$Force
+    [string]  $BasePath  = '',
+    [string[]]$Versions  = @(),
+    [string]  $IniPath   = '',
+    [switch]  $UpdateIni,
+    [switch]  $Force
 )
 
 Set-StrictMode -Version Latest
@@ -84,11 +103,46 @@ function New-SourceFolder {
         New-Item -ItemType Directory -Path $Path -Force | Out-Null
         Write-Host "  [+] $Path" -ForegroundColor Green
     } else {
-        Write-Host "  [=] $Path (bereits vorhanden)" -ForegroundColor Gray
+        Write-Host "  [=] $Path" -ForegroundColor Gray
     }
     $readme = Join-Path $Path 'README.txt'
     if (-not (Test-Path $readme)) {
         Set-Content -Path $readme -Value $ReadmeText -Encoding UTF8
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Hilfsfunktion: INI-Zeile aktualisieren (Key = Value in [Section])
+# ---------------------------------------------------------------------------
+function Update-IniValue {
+    param(
+        [string]$IniPath,
+        [string]$Section,
+        [string]$Key,
+        [string]$Value
+    )
+    $lines   = Get-Content $IniPath -Encoding UTF8
+    $inSect  = $false
+    $found   = $false
+    $result  = @()
+
+    foreach ($line in $lines) {
+        if ($line -match '^\[(.+)\]$') {
+            $inSect = ($matches[1] -eq $Section)
+        }
+        if ($inSect -and $line -match "^\s*$([regex]::Escape($Key))\s*=") {
+            $result += "$Key = $Value"
+            $found = $true
+            continue
+        }
+        $result += $line
+    }
+
+    if (-not $found) {
+        Write-Warning "INI-Update: Schluessel '$Key' in [$Section] nicht gefunden - uebersprungen."
+    } else {
+        Set-Content -Path $IniPath -Value $result -Encoding UTF8
+        Write-Host "  [INI] [$Section] $Key = $Value" -ForegroundColor Cyan
     }
 }
 
@@ -131,40 +185,41 @@ if ($Versions.Count -eq 0) {
 # ---------------------------------------------------------------------------
 # 3. Zusammenfassung und Bestaetigung
 # ---------------------------------------------------------------------------
-Write-Host ""
-Write-Host "SQL Server Setup Tool - SQLSources Struktur anlegen" -ForegroundColor Cyan
-Write-Host "=====================================================" -ForegroundColor Cyan
-Write-Host "  Basispfad : $BasePath"
-Write-Host "  Versionen : $($Versions -join ', ')"
-Write-Host ""
+Write-Host ''
+Write-Host 'SQL Server Setup Tool - SQLSources Struktur anlegen' -ForegroundColor Cyan
+Write-Host '=====================================================' -ForegroundColor Cyan
+Write-Host "  Basispfad  : $BasePath"
+Write-Host "  Versionen  : $($Versions -join ', ')"
+if ($UpdateIni) {
+    Write-Host "  INI-Update : JA - settings.ini wird aktualisiert" -ForegroundColor Yellow
+}
+Write-Host ''
 
 if (Test-Path $BasePath) {
     if (-not $Force) {
         $answer = Read-Host "Basispfad '$BasePath' existiert bereits. Fortfahren? (j/n)"
         if ($answer -notmatch '^[jJyY]') {
-            Write-Host "Abgebrochen." -ForegroundColor Yellow
-            exit 0
+            Write-Host 'Abgebrochen.' -ForegroundColor Yellow; exit 0
         }
     }
 } else {
     if (-not $Force) {
         $answer = Read-Host "Basispfad '$BasePath' wird neu erstellt. Fortfahren? (j/n)"
         if ($answer -notmatch '^[jJyY]') {
-            Write-Host "Abgebrochen." -ForegroundColor Yellow
-            exit 0
+            Write-Host 'Abgebrochen.' -ForegroundColor Yellow; exit 0
         }
     }
 }
 
 # ---------------------------------------------------------------------------
-# 4. Ordnerstruktur anlegen
+# 4. SQL Server Installationsquellen (je Version)
 # ---------------------------------------------------------------------------
-Write-Host ""
-Write-Host "Erstelle Ordnerstruktur..." -ForegroundColor Cyan
+Write-Host ''
+Write-Host '--- SQL Server Installationsmedien ---' -ForegroundColor White
 
 foreach ($ver in $Versions) {
     $verBase = Join-Path $BasePath "SQL$ver"
-    Write-Host ""
+    Write-Host ''
     Write-Host "  SQL Server $ver" -ForegroundColor White
 
     New-SourceFolder -Path (Join-Path $verBase 'SQL_Install') -ReadmeText @"
@@ -206,13 +261,15 @@ Beispiel: SQLServerReportingServices.exe
 
 Quelle: https://www.microsoft.com/en-us/download/details.aspx?id=100122 (SSRS 2022)
         https://www.microsoft.com/en-us/download/details.aspx?id=100068 (SSRS 2019)
+
+settings.ini: [OptionalComponents] SSRS_SourcePath = $verBase\Reporting
 "@
 
     New-SourceFolder -Path (Join-Path $verBase 'Management') -ReadmeText @"
 SQL Server $ver - SQL Server Management Studio (SSMS)
 ======================================================
 Inhalt: SSMS-Installer. SSMS ist versionsneutral - ein Installer reicht fuer alle
-        SQL Server Versionen. Dennoch hier versionsspezifisch abgelegt damit der
+        SQL Server Versionen. Dennoch hier versionsspezifisch abgelegt damit ein
         Robocopy-Lauf fuer SQL$ver alles in einem Durchgang kopiert.
 
 Beispiel: SSMS-Setup-ENU.exe
@@ -221,9 +278,235 @@ Quelle: https://aka.ms/ssmsfullsetup
 "@
 }
 
-# Scripts (versionsneutral -- Firmen-SQL-Skripte fuer PostInstall)
-Write-Host ""
-Write-Host "  Scripts (Firmen-SQL-Skripte - versionsneutral)" -ForegroundColor White
+# ---------------------------------------------------------------------------
+# 5. Treiber (versionsneutral)
+# ---------------------------------------------------------------------------
+Write-Host ''
+Write-Host '--- Treiber ---' -ForegroundColor White
+
+New-SourceFolder -Path (Join-Path $BasePath 'Drivers\JDBC') -ReadmeText @"
+Microsoft JDBC Driver for SQL Server
+=====================================
+Inhalt: JDBC-Treiber-Paket (ZIP mit .jar-Dateien) oder direktes .jar.
+
+Unterstuetzte Dateiformate:
+  sqljdbc_<Version>_enu.zip   -> wird automatisch entpackt
+  mssql-jdbc-<Version>.jar    -> wird direkt in den Zielordner kopiert
+
+Typische Zielpfade:
+  C:\Program Files\Microsoft SQL Server JDBC Driver\
+  oder Applikationsserver-Classpath
+
+settings.ini: [Drivers] JDBC_SourcePath = $BasePath\Drivers\JDBC
+
+Quelle: https://learn.microsoft.com/en-us/sql/connect/jdbc/download-microsoft-jdbc-driver-for-sql-server
+"@
+
+New-SourceFolder -Path (Join-Path $BasePath 'Drivers\ODBC') -ReadmeText @"
+Microsoft ODBC Driver for SQL Server
+=====================================
+Inhalt: ODBC-Treiber-Installer fuer Windows.
+
+Unterstuetzte Dateiformate:
+  msodbcsql*.msi   -> stille Installation via msiexec
+  msodbcsql*.exe   -> stille Installation
+
+Aktuell empfohlen: ODBC Driver 18 for SQL Server
+
+settings.ini: [Drivers] ODBC_SourcePath = $BasePath\Drivers\ODBC
+
+Quelle: https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server
+"@
+
+New-SourceFolder -Path (Join-Path $BasePath 'Drivers\DB2') -ReadmeText @"
+IBM DB2 ODBC/CLI-Treiber
+=========================
+Inhalt: IBM Data Server Driver fuer ODBC und CLI (64-Bit).
+
+Unterstuetzte Dateiformate:
+  db2_odbc_cli_64.exe   -> bevorzugt (stille Installation)
+  ibm_data_server_driver_package_win64_v*.exe
+
+Nach der Installation wird db2cli -setup -registerall ausgefuehrt
+um den Treiber systemweit zu registrieren.
+
+settings.ini: [Drivers] DB2_SourcePath = $BasePath\Drivers\DB2
+
+Quelle: IBM Fix Central / IBM Passport Advantage
+"@
+
+# ---------------------------------------------------------------------------
+# 6. PowerShell Module (versionsneutral)
+# ---------------------------------------------------------------------------
+Write-Host ''
+Write-Host '--- PowerShell Module ---' -ForegroundColor White
+
+New-SourceFolder -Path (Join-Path $BasePath 'Modules\dbaTools') -ReadmeText @"
+dbaTools PowerShell-Modul (Offline-Kopie)
+==========================================
+Inhalt: Vollstaendig entpacktes dbaTools-Modul.
+        Wird verwendet wenn keine Internet-Verbindung zur PowerShell Gallery besteht.
+
+Erwartete Struktur:
+  Modules\dbaTools\
+    dbatools.psd1
+    dbatools.psm1
+    bin\
+    functions\
+    ...
+
+settings.ini: [dbaTools] ShareBasePath = $BasePath\Modules
+
+Quelle: https://github.com/dataplat/dbatools/releases
+"@
+
+New-SourceFolder -Path (Join-Path $BasePath 'Modules\dbatools.library') -ReadmeText @"
+dbatools.library (Pflichtabhaengigkeit ab dbaTools 2.x)
+========================================================
+Inhalt: dbatools.library-Modul - muss zusammen mit dbatools vorhanden sein.
+
+Erwartete Struktur:
+  Modules\dbatools.library\
+    dbatools.library.psd1
+    dbatools.library.psm1
+    ...
+
+settings.ini: [dbaTools] ShareBasePath = $BasePath\Modules
+              (gleicher Basispfad wie dbaTools)
+
+Quelle: https://github.com/dataplat/dbatools.library/releases
+"@
+
+New-SourceFolder -Path (Join-Path $BasePath 'Modules\sqmSQLTool') -ReadmeText @"
+sqmSQLTool PowerShell-Modul (Offline-Kopie)
+============================================
+Inhalt: Vollstaendig entpacktes sqmSQLTool-Modul.
+        Wird verwendet wenn kein Zugriff auf die PowerShell Gallery oder den
+        Entwicklungspfad besteht.
+
+Erwartete Struktur:
+  Modules\sqmSQLTool\
+    sqmSQLTool.psd1
+    sqmSQLTool.psm1
+    Public\
+    ...
+
+settings.ini: [sqmSQLTool] ShareBasePath = $BasePath\Modules
+
+Quelle: https://github.com/JankeUwe/sqmSQLTool
+        https://www.powershellgallery.com/packages/sqmSQLTool
+"@
+
+# ---------------------------------------------------------------------------
+# 7. GUI-Tools (versionsneutral)
+# ---------------------------------------------------------------------------
+Write-Host ''
+Write-Host '--- Tools ---' -ForegroundColor White
+
+New-SourceFolder -Path (Join-Path $BasePath 'Tools\AlwaysOnSetup') -ReadmeText @"
+AlwaysOn Setup Tool
+====================
+Inhalt: Aktuelles Release des AlwaysOn Setup Tools (entpackt oder als ZIP).
+        PowerShell WinForms-Wizard zur Einrichtung von SQL Server AlwaysOn
+        Availability Groups.
+
+Erwartete Dateien:
+  AlwaysOnSetup.ps1   (Einstiegspunkt)
+  Modules\
+  Config\
+  ...
+
+Quelle: https://github.com/JankeUwe/AlwaysOnSetup
+"@
+
+New-SourceFolder -Path (Join-Path $BasePath 'Tools\SQLSetupTool') -ReadmeText @"
+SQL Server Setup Tool
+======================
+Inhalt: Aktuelles Release des SQL Server Setup Tools (dieses Tool selbst).
+        Kann zur Verteilung an andere Server hier zentral abgelegt werden.
+
+Erwartete Dateien:
+  Main.ps1
+  Modules\
+  Config\settings.ini
+  GUI\
+  ...
+
+Quelle: https://github.com/JankeUwe/SQLSetupTool
+"@
+
+New-SourceFolder -Path (Join-Path $BasePath 'Tools\SQLMigration') -ReadmeText @"
+SQL Migration Tool
+===================
+Inhalt: Aktuelles Release des SQL Migration Tools.
+        Zweiphasige SQL Server Migration mit GUI (Backup/Restore oder Detach/Attach).
+
+Quelle: https://github.com/JankeUwe/SQLMigration
+"@
+
+New-SourceFolder -Path (Join-Path $BasePath 'Tools\InplaceUpgrade') -ReadmeText @"
+SQL Server Inplace Upgrade Tool
+================================
+Inhalt: Aktuelles Release des Inplace Upgrade Tools.
+        Automatisiert SQL Server Inplace-Upgrades (2016 -> 2019 -> 2022).
+        Pre-Checks, Upgrade-Ausfuehrung, Post-Validierung.
+
+Quelle: https://github.com/JankeUwe/InplaceUpDate
+"@
+
+New-SourceFolder -Path (Join-Path $BasePath 'Tools\SSRSDeployment') -ReadmeText @"
+SSRS Report Deployment Tool
+=============================
+Inhalt: Aktuelles Release des SSRS Report Deployment Tools.
+        Massendeployment von SSRS-Reports auf den Report Server.
+        Unterstuetzt SSRS und Power BI Report Server.
+
+Quelle: https://github.com/JankeUwe/SSRSDeploymentTool
+"@
+
+# ---------------------------------------------------------------------------
+# 8. TDP - IBM Spectrum Protect (versionsneutral)
+# ---------------------------------------------------------------------------
+Write-Host ''
+Write-Host '--- TDP / Wartung ---' -ForegroundColor White
+
+New-SourceFolder -Path (Join-Path $BasePath 'TDP') -ReadmeText @"
+IBM Spectrum Protect (Tivoli Data Protection) - SQL Server Agent
+=================================================================
+Inhalt: TDP-Installer fuer SQL Server Backup-Integration.
+        Versionsneutral - gilt fuer alle SQL Server Versionen.
+
+settings.ini: [OptionalComponents] TDP_Enabled = true
+              (TDP_SourcePath wird auf $BasePath\TDP gesetzt)
+
+Beispiel-Inhalt:
+  setup.exe  (oder *.msi)
+  ...
+"@
+
+# ---------------------------------------------------------------------------
+# 9. Ola Hallengren Maintenance Solution (versionsneutral)
+# ---------------------------------------------------------------------------
+New-SourceFolder -Path (Join-Path $BasePath 'OlaHallengren') -ReadmeText @"
+Ola Hallengren Maintenance Solution
+=====================================
+Inhalt: SQL-Skripte von Ola Hallengren - lokaler Fallback wenn kein GitHub-Zugriff.
+        Wird verwendet wenn [Maintenance] OlaSourcePath gesetzt ist.
+
+Erwartete Datei:
+  MaintenanceSolution.sql
+
+Ohne diese Datei (Ordner leer): Download direkt von GitHub waehrend der Installation.
+
+settings.ini: [Maintenance] OlaSourcePath = $BasePath\OlaHallengren
+
+Quelle: https://ola.hallengren.com
+        https://github.com/olahallengren/sql-server-maintenance-solution
+"@
+
+# ---------------------------------------------------------------------------
+# 10. Post-Install SQL-Skripte (versionsneutral)
+# ---------------------------------------------------------------------------
 New-SourceFolder -Path (Join-Path $BasePath 'Scripts') -ReadmeText @"
 Firmen-SQL-Skripte fuer die PostInstall-Routine
 ================================================
@@ -239,75 +522,70 @@ Empfohlene Benennung:    01_logins.sql, 02_linkedserver.sql, ...
 
 GO-Trenner werden unterstuetzt (Batch-Ausfuehrung).
 
-Konfiguration: settings.ini [PostInstall] SqlScriptsPath
-               Leer lassen = dieser Ordner wird automatisch verwendet.
+settings.ini: [PostInstall] SqlScriptsPath = $BasePath\Scripts
+              (Leer lassen = dieser Ordner wird automatisch verwendet)
 "@
 
-# TDP (versionsneutral)
-Write-Host ""
-Write-Host "  TDP (IBM Spectrum Protect - versionsneutral)" -ForegroundColor White
-New-SourceFolder -Path (Join-Path $BasePath 'TDP') -ReadmeText @"
-IBM Spectrum Protect (Tivoli Data Protection) - SQL Server Agent
-=================================================================
-Inhalt: TDP-Installer fuer SQL Server Backup-Integration.
-        Versionsneutral - gilt fuer alle SQL Server Versionen.
+# ---------------------------------------------------------------------------
+# 11. Optional: settings.ini aktualisieren
+# ---------------------------------------------------------------------------
+if ($UpdateIni) {
+    Write-Host ''
+    Write-Host '--- settings.ini aktualisieren ---' -ForegroundColor Yellow
 
-TDP_SourcePath in settings.ini muss auf diesen Ordner zeigen.
+    $defaultVer = if ($ini['General']['DefaultVersion']) { $ini['General']['DefaultVersion'] } else { $Versions[0] }
 
-Beispiel-Inhalt:
-  setup.exe  (oder *.msi)
-  ...
-"@
+    # dbaTools ShareBasePath
+    Update-IniValue -IniPath $IniPath -Section 'dbaTools'   -Key 'ShareBasePath' -Value "$BasePath\Modules"
 
-# dbaTools offline (optional, nur wenn ShareBasePath auf diesen Share zeigen soll)
-$dbaBase = $ini['dbaTools']['ShareBasePath']
-if ($dbaBase -and $dbaBase -like "$BasePath*") {
-    Write-Host ""
-    Write-Host "  dbaTools (ShareBasePath aus INI)" -ForegroundColor White
-    New-SourceFolder -Path (Join-Path $dbaBase 'dbatools') -ReadmeText @"
-dbaTools PowerShell-Modul (Offline-Kopie)
-==========================================
-Inhalt: Vollstaendig entpacktes dbaTools-Modul.
-        Wird verwendet wenn keine Internet-Verbindung zur PowerShell Gallery besteht.
+    # sqmSQLTool ShareBasePath
+    Update-IniValue -IniPath $IniPath -Section 'sqmSQLTool' -Key 'ShareBasePath' -Value "$BasePath\Modules"
 
-Struktur:
-  dbatools\
-    dbatools.psd1
-    dbatools.psm1
-    ...
+    # Treiber-Pfade
+    Update-IniValue -IniPath $IniPath -Section 'Drivers'    -Key 'JDBC_SourcePath' -Value "$BasePath\Drivers\JDBC"
+    Update-IniValue -IniPath $IniPath -Section 'Drivers'    -Key 'ODBC_SourcePath' -Value "$BasePath\Drivers\ODBC"
+    Update-IniValue -IniPath $IniPath -Section 'Drivers'    -Key 'DB2_SourcePath'  -Value "$BasePath\Drivers\DB2"
 
-Quelle: https://github.com/dataplat/dbatools/releases
-"@
-    New-SourceFolder -Path (Join-Path $dbaBase 'dbatools.library') -ReadmeText @"
-dbatools.library (Unterstuetzungsbibliothek ab dbaTools 2.x)
-=============================================================
-Inhalt: dbatools.library-Modul, wird zusammen mit dbatools benoetigt.
+    # SSRS-SourcePath (auf Default-Version)
+    Update-IniValue -IniPath $IniPath -Section 'OptionalComponents' -Key 'SSRS_SourcePath' -Value "$BasePath\SQL$defaultVer\Reporting"
 
-Quelle: https://github.com/dataplat/dbatools.library/releases
-"@
+    # TDP-SourcePath (auskommentierte Zeile aktivieren und setzen)
+    Update-IniValue -IniPath $IniPath -Section 'OptionalComponents' -Key 'TDP_SourcePath'  -Value "$BasePath\TDP"
+
+    # Ola Hallengren
+    Update-IniValue -IniPath $IniPath -Section 'Maintenance'        -Key 'OlaSourcePath'   -Value "$BasePath\OlaHallengren"
+
+    Write-Host '  settings.ini aktualisiert.' -ForegroundColor Green
 }
 
 # ---------------------------------------------------------------------------
-# 5. Zusammenfassung
+# 12. Zusammenfassung
 # ---------------------------------------------------------------------------
-Write-Host ""
-Write-Host "=====================================================" -ForegroundColor Cyan
-Write-Host "Fertig. Angelegte Struktur:" -ForegroundColor Green
-Write-Host ""
+Write-Host ''
+Write-Host '=====================================================' -ForegroundColor Cyan
+Write-Host 'Fertig. Angelegte Struktur:' -ForegroundColor Green
+Write-Host ''
 
-$allFolders = Get-ChildItem -Path $BasePath -Recurse -Directory |
-              Where-Object { $_.Name -ne 'dbatools' -and $_.Name -ne 'dbatools.library' }
-
-foreach ($folder in ($allFolders | Sort-Object FullName)) {
+$allFolders = Get-ChildItem -Path $BasePath -Recurse -Directory | Sort-Object FullName
+foreach ($folder in $allFolders) {
     $rel = $folder.FullName.Substring($BasePath.Length).TrimStart('\','/')
-    Write-Host "  $BasePath\$rel" -ForegroundColor Gray
+    $depth = ($rel -split '\\').Count - 1
+    $indent = '  ' * $depth
+    Write-Host "$indent  $($folder.Name)\" -ForegroundColor Gray
 }
 
-Write-Host ""
-Write-Host "Naechste Schritte:" -ForegroundColor Cyan
-Write-Host "  1. SQL Server ISO entpacken nach: $BasePath\SQL<Version>\SQL_Install\" -ForegroundColor White
-Write-Host "  2. Aktuelles CU ablegen in:       $BasePath\SQL<Version>\SQL_Install\Updates\" -ForegroundColor White
-Write-Host "  3. SSRS-Installer ablegen in:     $BasePath\SQL<Version>\Reporting\" -ForegroundColor White
-Write-Host "  4. SSMS-Installer ablegen in:     $BasePath\SQL<Version>\Management\" -ForegroundColor White
-Write-Host "  5. SourceShare in settings.ini pruefen: $BasePath" -ForegroundColor White
-Write-Host ""
+Write-Host ''
+Write-Host 'Naechste Schritte:' -ForegroundColor Cyan
+Write-Host "  1. SQL Server ISO entpacken nach:  $BasePath\SQL<Version>\SQL_Install\" -ForegroundColor White
+Write-Host "  2. CU ablegen in:                  $BasePath\SQL<Version>\SQL_Install\Updates\" -ForegroundColor White
+Write-Host "  3. SSRS-Installer ablegen in:      $BasePath\SQL<Version>\Reporting\" -ForegroundColor White
+Write-Host "  4. SSMS-Installer ablegen in:      $BasePath\SQL<Version>\Management\" -ForegroundColor White
+Write-Host "  5. dbaTools entpacken nach:        $BasePath\Modules\dbaTools\" -ForegroundColor White
+Write-Host "  6. sqmSQLTool entpacken nach:      $BasePath\Modules\sqmSQLTool\" -ForegroundColor White
+Write-Host "  7. JDBC/ODBC/DB2 ablegen in:       $BasePath\Drivers\<Treiber>\" -ForegroundColor White
+Write-Host "  8. Tools ablegen in:               $BasePath\Tools\<Tool>\" -ForegroundColor White
+if (-not $UpdateIni) {
+    Write-Host ''
+    Write-Host "  Tipp: Starte mit -UpdateIni um settings.ini automatisch auf diese Pfade zu aktualisieren." -ForegroundColor Cyan
+}
+Write-Host ''
