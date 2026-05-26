@@ -630,6 +630,7 @@ function Show-SetupForm {
 
     $script:BtnCopy    = Add-Button -Parent $gbActions -Text 'Quellen kopieren'    -X 10  -Y 15 -Width 140
     $script:BtnInstall = Add-Button -Parent $gbActions -Text 'Installation starten' -X 160 -Y 15 -Width 150
+    $script:BtnConfig  = Add-Button -Parent $gbActions -Text 'Konfiguration...'    -X 320 -Y 15 -Width 130
     $script:BtnClose   = Add-Button -Parent $gbActions -Text 'Schliessen'          -X 680 -Y 15 -Width 90
 
     #=== Log-Fenster ===
@@ -1214,6 +1215,23 @@ $($worker.ToString())
 "@)
 
         $script:_InstallTimer = Start-BackgroundJob -Work $workerFull -Variables $vars
+    })
+
+    # --- Konfiguration oeffnen ---
+    $script:BtnConfig.Add_Click({
+        $toolRoot   = Split-Path $PSScriptRoot -Parent
+        $cfgFormPs1 = Join-Path $toolRoot 'GUI\ConfigForm.ps1'
+        if (-not (Test-Path $cfgFormPs1)) {
+            Write-Log "ConfigForm nicht gefunden: $cfgFormPs1"
+            return
+        }
+        . $cfgFormPs1
+        $saved = Show-ConfigForm -IniPath $script:Config.IniPath
+        if ($saved) {
+            Write-Log 'Konfiguration gespeichert. Aenderungen werden erst nach Neustart des Tools wirksam.'
+        } else {
+            Write-Log 'Konfiguration: Abgebrochen (keine Aenderungen gespeichert).'
+        }
     })
 
     $script:BtnClose.Add_Click({ $form.Close() })
