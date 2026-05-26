@@ -17,7 +17,9 @@
     Versionsneutrale Abschnitte:
         <Base>\Drivers\JDBC\
         <Base>\Drivers\ODBC\
+        <Base>\Drivers\OLEDB\
         <Base>\Drivers\DB2\
+        <Base>\Secpol\
         <Base>\Modules\dbaTools\
         <Base>\Modules\dbatools.library\
         <Base>\Modules\sqmSQLTool\
@@ -28,6 +30,8 @@
         <Base>\Tools\SSRSDeployment\
         <Base>\Scripts\
         <Base>\TDP\
+        <Base>\TDP\ConfigFile\
+        <Base>\TDP\TSMConfig\
         <Base>\OlaHallengren\
 
     Mit -UpdateIni werden die Pfade in settings.ini automatisch auf diese
@@ -318,6 +322,23 @@ settings.ini: [Drivers] ODBC_SourcePath = $BasePath\Drivers\ODBC
 Quelle: https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server
 "@
 
+New-SourceFolder -Path (Join-Path $BasePath 'Drivers\OLEDB') -ReadmeText @"
+Microsoft OLE DB Driver for SQL Server
+=======================================
+Inhalt: OLE DB-Treiber-Installer fuer Windows (msoledbsql.msi).
+        Wird von Anwendungen benoetigt die ADO/OLE DB zur SQL-Verbindung nutzen.
+        Eigenstaendiger Nachfolger des veralteten SQLOLEDB-Providers.
+
+Unterstuetzte Dateiformate:
+  msoledbsql*.msi   -> stille Installation via msiexec
+
+Aktuell empfohlen: Microsoft OLE DB Driver 19 for SQL Server
+
+settings.ini: [Drivers] OLEDB_SourcePath = $BasePath\Drivers\OLEDB
+
+Quelle: https://learn.microsoft.com/en-us/sql/connect/oledb/download-oledb-driver-for-sql-server
+"@
+
 New-SourceFolder -Path (Join-Path $BasePath 'Drivers\DB2') -ReadmeText @"
 IBM DB2 ODBC/CLI-Treiber
 =========================
@@ -476,12 +497,85 @@ IBM Spectrum Protect (Tivoli Data Protection) - SQL Server Agent
 Inhalt: TDP-Installer fuer SQL Server Backup-Integration.
         Versionsneutral - gilt fuer alle SQL Server Versionen.
 
+Unterordner:
+  ConfigFile\  -> Domainspezifische TDP-Konfigurationsdateien (dsm.opt, tdpsql.cfg)
+  TSMConfig\   -> Standalone TSM-Client-Konfiguration (ie_dsm.opt)
+
 settings.ini: [OptionalComponents] TDP_Enabled = true
               (TDP_SourcePath wird auf $BasePath\TDP gesetzt)
 
 Beispiel-Inhalt:
-  setup.exe  (oder *.msi)
+  TSMSQL_WIN_8.1.21.0\SetupFCM.exe
+  TSMSQL_WIN_8.1.21.0\spinstall.exe
   ...
+"@
+
+New-SourceFolder -Path (Join-Path $BasePath 'TDP\ConfigFile') -ReadmeText @"
+TDP - Domainspezifische Konfigurationsdateien
+=============================================
+Inhalt: Konfigurationsdateien fuer den TDP SQL Server Agent.
+        Wird nach der TDP-Installation in den TDP-Konfigurationsordner kopiert.
+
+Typische Dateien:
+  dsm.opt         -> TSM/SP-Clientoptionen (Serveradresse, Knotenname, Passwort)
+  tdpsql.cfg      -> TDP SQL Agent Konfiguration (Backup-Einstellungen)
+  tdpvss.cfg      -> TDP VSS-Konfiguration (wenn verwendet)
+
+Backup-Skripte (Beispiel):
+  full_backup.cmd    -> Vollsicherung per TDP
+  diff_backup.cmd    -> Differentialsicherung per TDP
+  log_backup.cmd     -> Transaktionsprotokolsicherung per TDP
+
+PowerShell-Skript:
+  CreateSqlTdpJobs.ps1  -> Legt SQL Agent Jobs fuer TDP-Backups an
+
+HINWEIS: Diese Dateien sind umgebungsspezifisch. Nicht oeffentlich!
+         Knotenname, Serveradresse und Passwoerter anpassen vor dem Einsatz.
+"@
+
+New-SourceFolder -Path (Join-Path $BasePath 'TDP\TSMConfig') -ReadmeText @"
+TSM - Standalone Client-Konfiguration
+======================================
+Inhalt: Konfigurationsdatei fuer den eigenstaendigen IBM Spectrum Protect (TSM) Client.
+        Wird verwendet wenn nur der TSM-Basis-Client (kein TDP/FCM) installiert ist.
+
+Typische Dateien:
+  ie_dsm.opt   -> TSM-Clientoptionsdatei (Serververbindung, Knotenname)
+  dsm.sys      -> Systemkonfiguration (Linux-Aequivalent: nicht unter Windows erforderlich)
+
+Unterschied zu TDP\ConfigFile:
+  TDP\ConfigFile  -> TDP SQL Agent ist installiert (Datenbankbackups via ISC Agent)
+  TDP\TSMConfig   -> Nur TSM-Basisclient (Filesystembackups, kein SQL-Agent)
+
+HINWEIS: Diese Dateien sind umgebungsspezifisch. Nicht oeffentlich!
+"@
+
+# ---------------------------------------------------------------------------
+# 8b. Security Policy (versionsneutral)
+# ---------------------------------------------------------------------------
+New-SourceFolder -Path (Join-Path $BasePath 'Secpol') -ReadmeText @"
+Windows Security Policy - SQL Server Haertung
+===============================================
+Inhalt: Exportierte Windows-Sicherheitsrichtlinien fuer SQL Server Server.
+        Wird via secedit /configure angewendet um SQL Server Sicherheitsanforderungen
+        automatisch zu konfigurieren.
+
+Enthaltene Richtlinien:
+  Instant File Initialization  -> Recht "Volumewartungsaufgaben ausfuehren" (SE_MANAGE_VOLUME_NAME)
+  Lock Pages in Memory         -> Recht "Seiten im Arbeitsspeicher sperren" (SeLockMemoryPrivilege)
+  Perform OS Backups           -> Recht "Dateien und Verzeichnisse sichern" (SeBackupPrivilege)
+
+Dateien:
+  secedt.sdb   -> Binaere Security Database (exportiert via secedit /export)
+  secedt.jfm   -> Journal File (Begleiter zur .sdb-Datei)
+  import.inf   -> Lesbare INF-Datei mit den Richtlinieneintraegen (Optional)
+
+Anwendung:
+  secedit /configure /db secedt.sdb /cfg import.inf /overwrite /quiet
+
+HINWEIS: Diese Datei ist maschinenspezifisch und enthaelt ggf. alle lokalen
+         Sicherheitsrichtlinien des Export-Servers. Inhalte vor Einsatz pruefen!
+         Nur die SQL-relevanten Rechte (Privileges) uebertragen.
 "@
 
 # ---------------------------------------------------------------------------
@@ -542,9 +636,10 @@ if ($UpdateIni) {
     Update-IniValue -IniPath $IniPath -Section 'sqmSQLTool' -Key 'ShareBasePath' -Value "$BasePath\Modules"
 
     # Treiber-Pfade
-    Update-IniValue -IniPath $IniPath -Section 'Drivers'    -Key 'JDBC_SourcePath' -Value "$BasePath\Drivers\JDBC"
-    Update-IniValue -IniPath $IniPath -Section 'Drivers'    -Key 'ODBC_SourcePath' -Value "$BasePath\Drivers\ODBC"
-    Update-IniValue -IniPath $IniPath -Section 'Drivers'    -Key 'DB2_SourcePath'  -Value "$BasePath\Drivers\DB2"
+    Update-IniValue -IniPath $IniPath -Section 'Drivers'    -Key 'JDBC_SourcePath'  -Value "$BasePath\Drivers\JDBC"
+    Update-IniValue -IniPath $IniPath -Section 'Drivers'    -Key 'ODBC_SourcePath'  -Value "$BasePath\Drivers\ODBC"
+    Update-IniValue -IniPath $IniPath -Section 'Drivers'    -Key 'OLEDB_SourcePath' -Value "$BasePath\Drivers\OLEDB"
+    Update-IniValue -IniPath $IniPath -Section 'Drivers'    -Key 'DB2_SourcePath'   -Value "$BasePath\Drivers\DB2"
 
     # SSRS-SourcePath (auf Default-Version)
     Update-IniValue -IniPath $IniPath -Section 'OptionalComponents' -Key 'SSRS_SourcePath' -Value "$BasePath\SQL$defaultVer\Reporting"
@@ -554,6 +649,9 @@ if ($UpdateIni) {
 
     # Ola Hallengren
     Update-IniValue -IniPath $IniPath -Section 'Maintenance'        -Key 'OlaSourcePath'   -Value "$BasePath\OlaHallengren"
+
+    # Security Policy
+    Update-IniValue -IniPath $IniPath -Section 'Secpol'             -Key 'SourcePath'       -Value "$BasePath\Secpol"
 
     Write-Host '  settings.ini aktualisiert.' -ForegroundColor Green
 }
@@ -582,8 +680,10 @@ Write-Host "  3. SSRS-Installer ablegen in:      $BasePath\SQL<Version>\Reportin
 Write-Host "  4. SSMS-Installer ablegen in:      $BasePath\SQL<Version>\Management\" -ForegroundColor White
 Write-Host "  5. dbaTools entpacken nach:        $BasePath\Modules\dbaTools\" -ForegroundColor White
 Write-Host "  6. sqmSQLTool entpacken nach:      $BasePath\Modules\sqmSQLTool\" -ForegroundColor White
-Write-Host "  7. JDBC/ODBC/DB2 ablegen in:       $BasePath\Drivers\<Treiber>\" -ForegroundColor White
-Write-Host "  8. Tools ablegen in:               $BasePath\Tools\<Tool>\" -ForegroundColor White
+Write-Host "  7. JDBC/ODBC/OLE DB ablegen in:    $BasePath\Drivers\<Treiber>\" -ForegroundColor White
+Write-Host "  8. TDP-Config ablegen in:          $BasePath\TDP\ConfigFile\" -ForegroundColor White
+Write-Host "  9. Secpol exportieren nach:        $BasePath\Secpol\" -ForegroundColor White
+Write-Host " 10. Tools ablegen in:               $BasePath\Tools\<Tool>\" -ForegroundColor White
 if (-not $UpdateIni) {
     Write-Host ''
     Write-Host "  Tipp: Starte mit -UpdateIni um settings.ini automatisch auf diese Pfade zu aktualisieren." -ForegroundColor Cyan
