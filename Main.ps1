@@ -45,7 +45,9 @@ $moduleNames = @(
     'CopySource',
     'Installation',
     'PostInstall',
-    'DbaToolsSetup'
+    'DbaToolsSetup',
+    'Drivers',
+    'PreInstall'
 )
 
 foreach ($mod in $moduleNames) {
