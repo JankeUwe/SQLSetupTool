@@ -101,6 +101,25 @@ function Add-GroupBox {
     return $gb
 }
 
+# Berechnet TCP-Port aus Instanzname, BasePort und PortIncrement
+function Get-TcpPortForInstance {
+    param(
+        [string]$InstanceName,
+        [int]$BasePort      = 1433,
+        [int]$PortIncrement = 10
+    )
+    if ([string]::IsNullOrWhiteSpace($InstanceName) -or
+        $InstanceName -eq 'MSSQLSERVER') {
+        return $BasePort
+    }
+    if ($InstanceName -match '(\d+)') {
+        $n = [int]$matches[1]
+        return $BasePort + ($n * $PortIncrement)
+    }
+    # Named instance ohne Nummer: erste freie Port-Stufe
+    return $BasePort + $PortIncrement
+}
+
 # Write-Log: thread-sicher via Invoke wenn noetig
 function Write-Log {
     param([string]$Message)
@@ -320,6 +339,36 @@ function Invoke-PathValidation {
         }
     }
 
+    # --- Treiber-Quellpfade ---
+    $driverMap = @(
+        @{ Key = 'JDBC'; EnabledKey = 'JDBC_Enabled'; PathKey = 'JDBC_SourcePath'; Chk = { $script:ChkJDBC } },
+        @{ Key = 'ODBC'; EnabledKey = 'ODBC_Enabled'; PathKey = 'ODBC_SourcePath'; Chk = { $script:ChkODBC } },
+        @{ Key = 'DB2';  EnabledKey = 'DB2_Enabled';  PathKey = 'DB2_SourcePath';  Chk = { $script:ChkDB2  } }
+    )
+    foreach ($drv in $driverMap) {
+        $chkCtrl = & $drv.Chk
+        if ($null -eq $chkCtrl) { continue }
+        $drvPath = $Config.Drivers[$drv.PathKey]
+        if ($drvPath -and $drvPath -ne '') {
+            if (-not (Test-Path -Path $drvPath -ErrorAction SilentlyContinue)) {
+                Write-Log "WARNUNG: $($drv.Key)-Quellpfad nicht erreichbar: $drvPath"
+                Write-Log "         Checkbox '$($drv.Key)' wurde deaktiviert."
+                $chkCtrl.Checked = $false
+                $chkCtrl.Enabled = $false
+                $chkCtrl.Text    = "$($drv.Key) Driver - Pfad nicht erreichbar"
+            }
+            else {
+                Write-Log "OK: $($drv.Key)-Quellpfad erreichbar: $drvPath"
+            }
+        }
+        else {
+            Write-Log "WARNUNG: $($drv.Key) aktiviert aber kein SourcePath konfiguriert."
+            $chkCtrl.Checked = $false
+            $chkCtrl.Enabled = $false
+            $chkCtrl.Text    = "$($drv.Key) Driver - Quellpfad fehlt in settings.ini"
+        }
+    }
+
     # --- Ola Hallengren lokaler Fallback-Pfad ---
     if ($Config.OlaSourcePath -and $Config.OlaSourcePath -ne '') {
         if (-not (Test-Path -Path $Config.OlaSourcePath -ErrorAction SilentlyContinue)) {
@@ -350,7 +399,7 @@ function Show-SetupForm {
     #--- Hauptformular ---
     $form                 = New-Object System.Windows.Forms.Form
     $form.Text            = 'SQL Server Setup - Standardisierte Installation'
-    $form.Size            = New-Object System.Drawing.Size(820, 870)
+    $form.Size            = New-Object System.Drawing.Size(820, 980)
     $form.StartPosition   = 'CenterScreen'
     $form.FormBorderStyle = 'FixedDialog'
     $form.MaximizeBox     = $false
@@ -410,7 +459,7 @@ function Show-SetupForm {
     Add-Label -Parent $gbVersion -Text $domInfo -X 520 -Y 22 -Width 230 -Height 20
 
     #=== GroupBox: Instanzname ===
-    $gbInstance = Add-GroupBox -Parent $form -Text 'Instanzname' -X 10 -Y 90 -Width 780 -Height 60
+    $gbInstance = Add-GroupBox -Parent $form -Text 'Instanzname' -X 10 -Y 90 -Width 780 -Height 80
 
     Add-Label -Parent $gbInstance -Text 'Instanzname:' -X 10 -Y 22 -Width 100
     $script:TbInstance       = Add-TextBox -Parent $gbInstance -X 115 -Y 20 -Width 200 `
@@ -418,8 +467,15 @@ function Show-SetupForm {
     $script:BtnResetInstance = Add-Button  -Parent $gbInstance -Text 'Standard' -X 325 -Y 19 -Width 80
     Add-Label -Parent $gbInstance -Text '(Standard: MSSQLServer)' -X 415 -Y 22 -Width 200
 
+    # TCP-Port-Anzeige (berechnet aus BasePort + Instanznummer * PortIncrement)
+    Add-Label -Parent $gbInstance -Text 'TCP-Port:' -X 10 -Y 52 -Width 100
+    $script:LblTcpPort = Add-Label -Parent $gbInstance -Text '' -X 115 -Y 52 -Width 200 -Height 20
+    $script:LblTcpPort.ForeColor = [System.Drawing.Color]::DarkBlue
+    $script:LblTcpPort.Font = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
+    Add-Label -Parent $gbInstance -Text '(aus settings.ini [Ports])' -X 415 -Y 52 -Width 220
+
     #=== GroupBox: Sortierung ===
-    $gbCollation = Add-GroupBox -Parent $form -Text 'Sortierung (Collation)' -X 10 -Y 160 -Width 780 -Height 60
+    $gbCollation = Add-GroupBox -Parent $form -Text 'Sortierung (Collation)' -X 10 -Y 180 -Width 780 -Height 60
 
     Add-Label -Parent $gbCollation -Text 'Sortierung:' -X 10 -Y 22 -Width 90
     $script:CbCollation = Add-ComboBox -Parent $gbCollation -X 105 -Y 20 -Width 320 `
@@ -438,7 +494,7 @@ function Show-SetupForm {
 
     #=== GroupBox: Service-Konto ===
     $gbAccount = Add-GroupBox -Parent $form -Text 'Service-Konto (leer = NT SERVICE\MSSQLSERVER)' `
-                              -X 10 -Y 230 -Width 780 -Height 90
+                              -X 10 -Y 250 -Width 780 -Height 90
 
     Add-Label -Parent $gbAccount -Text 'Konto (DOMAIN\User):' -X 10 -Y 22 -Width 150
     $script:TbAccount  = Add-TextBox -Parent $gbAccount -X 165 -Y 20 -Width 250
@@ -450,7 +506,7 @@ function Show-SetupForm {
     $script:LblAdStatus = Add-Label  -Parent $gbAccount -Text '' -X 530 -Y 22 -Width 220
 
     #=== GroupBox: Plattenlayout ===
-    $gbDisk = Add-GroupBox -Parent $form -Text 'Plattenlayout' -X 10 -Y 330 -Width 780 -Height 110
+    $gbDisk = Add-GroupBox -Parent $form -Text 'Plattenlayout' -X 10 -Y 350 -Width 780 -Height 110
 
     $diskLayout = $Config.DiskLayout
     # Config.Domain statt Config.CurrentDomain
@@ -482,7 +538,7 @@ function Show-SetupForm {
               -X 10 -Y 88 -Width 500
 
     #=== GroupBox: Monitoring ===
-    $gbMonitor = Add-GroupBox -Parent $form -Text 'Monitoring' -X 10 -Y 450 -Width 780 -Height 60
+    $gbMonitor = Add-GroupBox -Parent $form -Text 'Monitoring' -X 10 -Y 470 -Width 780 -Height 60
 
     if ($Config.MonitoringEnabled) {
         Add-Label -Parent $gbMonitor -Text 'Monitoring-Typ:' -X 10 -Y 22 -Width 110
@@ -509,7 +565,7 @@ function Show-SetupForm {
     #=== GroupBox: Optionale Komponenten ===
     # 2-Zeilen-Layout: Zeile 1 (Y=22) SSRS | SSAS | SSMS  /  Zeile 2 (Y=50) SSIS | TDP
     # Abstand 265px (Checkbox-Breite 220px + 45px Luft) = kein Ueberlappen
-    $gbOpt = Add-GroupBox -Parent $form -Text 'Optionale Komponenten' -X 10 -Y 520 -Width 780 -Height 100
+    $gbOpt = Add-GroupBox -Parent $form -Text 'Optionale Komponenten' -X 10 -Y 540 -Width 780 -Height 100
 
     $script:ChkSSRS = $null
     $script:ChkSSAS = $null
@@ -539,15 +595,45 @@ function Show-SetupForm {
     Add-Label -Parent $gbOpt -Text 'Sortierung fuer SSAS: identisch mit Instanz-Sortierung' `
               -X 10 -Y 76 -Width 500
 
+    #=== GroupBox: Treiber-Installation (konditionell) ===
+    $script:ChkJDBC = $null
+    $script:ChkODBC = $null
+    $script:ChkDB2  = $null
+
+    $jdbcEnabled = ($Config.Drivers -and $Config.Drivers['JDBC_Enabled'] -eq 'true' -and $Config.Drivers['JDBC_SourcePath'] -ne '')
+    $odbcEnabled = ($Config.Drivers -and $Config.Drivers['ODBC_Enabled'] -eq 'true' -and $Config.Drivers['ODBC_SourcePath'] -ne '')
+    $db2Enabled  = ($Config.Drivers -and $Config.Drivers['DB2_Enabled']  -eq 'true' -and $Config.Drivers['DB2_SourcePath']  -ne '')
+
+    $anyDriverConfigured = $jdbcEnabled -or $odbcEnabled -or $db2Enabled
+
+    if ($anyDriverConfigured) {
+        $gbDrivers = Add-GroupBox -Parent $form -Text 'Treiber-Installation' -X 10 -Y 650 -Width 780 -Height 80
+
+        if ($jdbcEnabled) {
+            $script:ChkJDBC = Add-CheckBox -Parent $gbDrivers -Text 'JDBC Driver (Microsoft SQL Server)' -X 10  -Y 22
+        }
+        if ($odbcEnabled) {
+            $script:ChkODBC = Add-CheckBox -Parent $gbDrivers -Text 'ODBC Driver (Microsoft SQL Server)' -X 10  -Y 44
+        }
+        if ($db2Enabled) {
+            $script:ChkDB2  = Add-CheckBox -Parent $gbDrivers -Text 'DB2 ODBC/CLI Driver (IBM)'          -X 400 -Y 22
+        }
+
+        $driverOffset = 90
+    }
+    else {
+        $driverOffset = 0
+    }
+
     #=== Aktions-Buttons ===
-    $gbActions = Add-GroupBox -Parent $form -Text 'Aktionen' -X 10 -Y 630 -Width 780 -Height 50
+    $gbActions = Add-GroupBox -Parent $form -Text 'Aktionen' -X 10 -Y (650 + $driverOffset) -Width 780 -Height 50
 
     $script:BtnCopy    = Add-Button -Parent $gbActions -Text 'Quellen kopieren'    -X 10  -Y 15 -Width 140
     $script:BtnInstall = Add-Button -Parent $gbActions -Text 'Installation starten' -X 160 -Y 15 -Width 150
     $script:BtnClose   = Add-Button -Parent $gbActions -Text 'Schliessen'          -X 680 -Y 15 -Width 90
 
     #=== Log-Fenster ===
-    $gbLog = Add-GroupBox -Parent $form -Text 'Protokoll' -X 10 -Y 690 -Width 780 -Height 135
+    $gbLog = Add-GroupBox -Parent $form -Text 'Protokoll' -X 10 -Y (710 + $driverOffset) -Width 780 -Height 135
 
     $script:LogBox            = New-Object System.Windows.Forms.RichTextBox
     $script:LogBox.Location   = New-Object System.Drawing.Point(10, 18)
@@ -631,15 +717,31 @@ Get-ChildItem '$modulesDir' -Filter '*.psm1' | ForEach-Object {
 
     #region --- Event-Handler ---
 
+    # TbInstance TextChanged -> TCP-Port-Anzeige aktualisieren
+    $script:TbInstance.Add_TextChanged({
+        $inst      = $script:TbInstance.Text.Trim()
+        $basePort  = if ($script:Config.BasePort -gt 0) { $script:Config.BasePort } else { 1433 }
+        $portIncr  = if ($script:Config.PortIncrement -gt 0) { $script:Config.PortIncrement } else { 10 }
+        $port      = Get-TcpPortForInstance -InstanceName $inst -BasePort $basePort -PortIncrement $portIncr
+        $script:LblTcpPort.Text = "Port $port"
+    })
+
     # Form_Shown: BringToFront + initiales Log + Pfadprüfung
     $form.Add_Shown({
         $form.BringToFront()
         $form.Activate()
-        # Config.Domain statt Config.CurrentDomain
         $domainInfo = if ($script:Config.Domain) { $script:Config.Domain } else { 'keine' }
         Write-Log 'SQL Server Setup Tool gestartet.'
         Write-Log "Konfiguration geladen. Domain: $domainInfo"
         Write-Log "Sortierung: $($script:Config.DefaultCollation)"
+
+        # TCP-Port initial setzen
+        $basePort = if ($script:Config.BasePort -gt 0) { $script:Config.BasePort } else { 1433 }
+        $portIncr = if ($script:Config.PortIncrement -gt 0) { $script:Config.PortIncrement } else { 10 }
+        $initPort = Get-TcpPortForInstance -InstanceName $script:Config.DefaultInstanceName `
+                        -BasePort $basePort -PortIncrement $portIncr
+        $script:LblTcpPort.Text = "Port $initPort"
+
         Write-Log '--- Pfad-Pruefung ---'
         $sourceOk = Invoke-PathValidation -Config $script:Config
         if ($sourceOk) {
@@ -865,6 +967,21 @@ $($worker.ToString())
         $snapChkSSIS         = ($null -ne $script:ChkSSIS -and $script:ChkSSIS.Checked)
         $snapSsisCheckboxShown = ($null -ne $script:ChkSSIS)
         $snapChkTDP          = ($null -ne $script:ChkTDP  -and $script:ChkTDP.Checked)
+        $snapChkJDBC         = ($null -ne $script:ChkJDBC -and $script:ChkJDBC.Checked)
+        $snapChkODBC         = ($null -ne $script:ChkODBC -and $script:ChkODBC.Checked)
+        $snapChkDB2          = ($null -ne $script:ChkDB2  -and $script:ChkDB2.Checked)
+
+        # --- PreInstall-Pruefungen (synchron im GUI-Thread) ---
+        $preLayout = Get-DiskLayoutFromForm
+        $preOk = Invoke-PreInstallChecks `
+            -Config       $script:Config `
+            -DiskLayout   $preLayout `
+            -InstanceName $snapInstance `
+            -LogCallback  { param($msg) Write-Log $msg }
+        if (-not $preOk) {
+            Write-Log 'Installation abgebrochen (PreInstall-Pruefung).'
+            return
+        }
 
         # Monitoring value (0=Kein, 1=Service, 2=Vollstaendig)
         # SelectedIndex entspricht direkt dem MonitoringType-Parameter (0/1/2)
@@ -979,7 +1096,24 @@ $($worker.ToString())
                             -LogCallback  $logSB
                     }
 
-                    # PostInstall AFTER optional components - TSM valid now
+                    # Treiber-Installation
+                    if ($snapChkJDBC) {
+                        Write-Log 'Installiere JDBC-Treiber...'
+                        Install-JdbcComponent -SourcePath $snapConfig.Drivers['JDBC_SourcePath'] `
+                                              -LogCallback $logSB
+                    }
+                    if ($snapChkODBC) {
+                        Write-Log 'Installiere ODBC-Treiber...'
+                        Install-OdbcComponent -SourcePath $snapConfig.Drivers['ODBC_SourcePath'] `
+                                              -LogCallback $logSB
+                    }
+                    if ($snapChkDB2) {
+                        Write-Log 'Installiere DB2-Treiber...'
+                        Install-Db2Component  -SourcePath $snapConfig.Drivers['DB2_SourcePath'] `
+                                              -LogCallback $logSB
+                    }
+
+                    # PostInstall AFTER optional components + drivers
                     Invoke-PostInstall -SqlInstance        $snapInstance `
                                        -SqlPaths          $sqlPaths `
                                        -MonitoringType    $snapMonitoring `
@@ -990,6 +1124,8 @@ $($worker.ToString())
                                        -OlaSourcePath     $snapConfig.OlaSourcePath `
                                        -SqlScriptsPath    $snapConfig.SqlScriptsPath `
                                        -PostInstallScript $snapConfig.PostInstallScript `
+                                       -BasePort          $snapConfig.BasePort `
+                                       -PortIncrement     $snapConfig.PortIncrement `
                                        -LogCallback       $logSB
                 }
 
@@ -1038,6 +1174,9 @@ $($worker.ToString())
             snapChkSSIS          = $snapChkSSIS
             snapSsisCheckboxShown = $snapSsisCheckboxShown
             snapChkTDP           = $snapChkTDP
+            snapChkJDBC          = $snapChkJDBC
+            snapChkODBC          = $snapChkODBC
+            snapChkDB2           = $snapChkDB2
             snapMonitoring       = $snapMonitoring
             form           = $form
             script_LogBox      = $script:LogBox

@@ -63,6 +63,8 @@ function Invoke-PostInstall {
         [string[]]$SysadminGroups = @(),
         [string]$OlaSourcePath = '',
         [string]$SqlScriptsPath = '',
+        [int]$BasePort = 0,
+        [int]$PortIncrement = 10,
         [string]$ComputerName = $env:COMPUTERNAME,
         [ScriptBlock]$LogCallback
     )
@@ -92,6 +94,20 @@ function Invoke-PostInstall {
 
         Set-SqlMaxDop -SqlInstance $SqlInstance
         log "  OK: MAXDOP konfiguriert"
+
+        # ===== 2a. TCP-Port konfigurieren =====
+        if ($BasePort -gt 0) {
+            log 'PostInstall: Konfiguriere TCP-Port...'
+            try {
+                $portResult = Set-sqmTcpPort -SqlInstance $SqlInstance `
+                    -BasePort $BasePort -PortIncrement $PortIncrement -ErrorAction Stop
+                log "  OK: TCP-Port $($portResult.Port) [$($portResult.Status)]"
+                log '  HINWEIS: SQL Server muss neu gestartet werden damit der Port aktiv wird.'
+            }
+            catch {
+                log "  WARN: TCP-Port konnte nicht gesetzt werden: $_"
+            }
+        }
 
         # ===== 3. SQL Server Agent =====
         log "PostInstall: Konfiguriere SQL Server Agent..."
