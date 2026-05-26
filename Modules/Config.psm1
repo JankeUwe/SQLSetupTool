@@ -413,6 +413,25 @@ function Get-SetupConfig {
         }
     }
 
+    # -- [Drivers] -----------------------------------------------------------
+    $drivers = [ordered]@{}
+    if ($ini.Contains('Drivers')) {
+        foreach ($key in $ini['Drivers'].Keys) {
+            $drivers[$key] = $ini['Drivers'][$key]
+        }
+    }
+
+    # -- [Ports] -------------------------------------------------------------
+    $portsSection  = if ($ini.Contains('Ports')) { $ini['Ports'] } else { @{} }
+    $cfgBasePort   = if ($portsSection['BasePort']       -and $portsSection['BasePort']       -match '^\d+$') { [int]$portsSection['BasePort'] }       else { 1433 }
+    $cfgBrowserPort = if ($portsSection['BrowserPort']   -and $portsSection['BrowserPort']    -match '^\d+$') { [int]$portsSection['BrowserPort'] }     else { 1434 }
+    $cfgPortIncrement = if ($portsSection['PortIncrement'] -and $portsSection['PortIncrement'] -match '^\d+$') { [int]$portsSection['PortIncrement'] }  else { 10 }
+
+    # -- [PreInstall] --------------------------------------------------------
+    $preSection         = if ($ini.Contains('PreInstall')) { $ini['PreInstall'] } else { @{} }
+    $cfgFormat64kCheck  = ($preSection['Format64kCheck']  -eq 'true')
+    $cfgSnapshotEnabled = ($preSection['SnapshotEnabled'] -eq 'true')
+
     # PS 5.1-kompatible Fallback-Werte
     $cfgVersion      = if ($general['DefaultVersion'])      { $general['DefaultVersion'] }      else { '2022' }
     $cfgEdition      = if ($general['DefaultEdition'])      { $general['DefaultEdition'] }      else { 'Developer' }
@@ -466,6 +485,18 @@ function Get-SetupConfig {
 
         # Optionale Komponenten
         OptionalComponents  = $optComp
+
+        # Treiber-Installation (aus [Drivers])
+        Drivers             = $drivers
+
+        # TCP-Port-Konfiguration (aus [Ports])
+        BasePort            = $cfgBasePort
+        BrowserPort         = $cfgBrowserPort
+        PortIncrement       = $cfgPortIncrement
+
+        # PreInstall-Pruefungen (aus [PreInstall])
+        Format64kCheck      = $cfgFormat64kCheck
+        SnapshotEnabled     = $cfgSnapshotEnabled
 
         # PostInstall-Skript (wird in Main.ps1 in absoluten Pfad aufgeloest)
         PostInstallScript   = 'Scripts\PostInstall.ps1'
