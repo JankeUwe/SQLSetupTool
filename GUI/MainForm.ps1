@@ -217,6 +217,123 @@ function Start-BackgroundJob {
     return $timer
 }
 
+# ---------------------------------------------------------------------------
+# Invoke-PathValidation: Prüft alle konfigurierten Pfade beim Start.
+# Disabled betroffene Checkboxen und schreibt Warnungen ins Log.
+# Gibt $true zurück wenn SourceShare erreichbar (Installation möglich).
+# ---------------------------------------------------------------------------
+function Invoke-PathValidation {
+    param(
+        [Parameter(Mandatory)][PSCustomObject]$Config
+    )
+
+    $sourceShareOk = $true
+
+    # --- SourceShare (kritisch fuer Quellen-Kopie und Installation) ---
+    if ($Config.SourceShare -and $Config.SourceShare -ne '') {
+        if (-not (Test-Path -Path $Config.SourceShare -ErrorAction SilentlyContinue)) {
+            Write-Log "WARNUNG: SourceShare nicht erreichbar: $($Config.SourceShare)"
+            Write-Log "         'Quellen kopieren' und 'Installation starten' sind deaktiviert."
+            $script:BtnCopy.Enabled    = $false
+            $script:BtnInstall.Enabled = $false
+            $sourceShareOk = $false
+        }
+        else {
+            Write-Log "OK: SourceShare erreichbar: $($Config.SourceShare)"
+        }
+    }
+    else {
+        Write-Log "WARNUNG: SourceShare nicht konfiguriert (settings.ini [General] SourceShare)."
+        $script:BtnCopy.Enabled    = $false
+        $script:BtnInstall.Enabled = $false
+        $sourceShareOk = $false
+    }
+
+    # --- dbaTools-Share (kritisch fuer Installation) ---
+    if ($Config.DbaTools) {
+        $dbaPath = $Config.DbaTools.ShareBasePath
+        if ($dbaPath -and -not (Test-Path -Path $dbaPath -ErrorAction SilentlyContinue)) {
+            Write-Log "WARNUNG: dbaTools-Share nicht erreichbar: $dbaPath"
+            Write-Log "         Installation möglicherweise nicht möglich (kein lokales dbaTools)."
+        }
+        else {
+            Write-Log "OK: dbaTools-Share erreichbar: $dbaPath"
+        }
+    }
+    else {
+        Write-Log "INFO: dbaTools-Share nicht konfiguriert - verwende lokale Installation oder Gallery."
+    }
+
+    # --- sqmSQLTool-Share (kritisch fuer PostInstall) ---
+    if ($Config.sqmSQLTool) {
+        $sqmPath = $Config.sqmSQLTool.ShareBasePath
+        if ($sqmPath -and -not (Test-Path -Path $sqmPath -ErrorAction SilentlyContinue)) {
+            Write-Log "WARNUNG: sqmSQLTool-Share nicht erreichbar: $sqmPath"
+            Write-Log "         PostInstall-Funktionen (Monitoring, Ola, etc.) nicht verfuegbar."
+        }
+        else {
+            Write-Log "OK: sqmSQLTool-Share erreichbar: $sqmPath"
+        }
+    }
+
+    # --- Optionale Komponenten ---
+
+    # SSRS
+    if ($null -ne $script:ChkSSRS) {
+        $ssrsPath = $Config.OptionalComponents['SSRS_SourcePath']
+        if ($ssrsPath -and $ssrsPath -ne '') {
+            if (-not (Test-Path -Path $ssrsPath -ErrorAction SilentlyContinue)) {
+                Write-Log "WARNUNG: SSRS-Quellpfad nicht erreichbar: $ssrsPath"
+                Write-Log "         Checkbox 'SSRS' wurde deaktiviert."
+                $script:ChkSSRS.Checked = $false
+                $script:ChkSSRS.Enabled = $false
+                $script:ChkSSRS.Text    = 'SSRS (Reporting Services) - Pfad nicht erreichbar'
+            }
+            else {
+                Write-Log "OK: SSRS-Quellpfad erreichbar: $ssrsPath"
+            }
+        }
+        # Kein SourcePath konfiguriert: kein separater Check noetig (wird aus SourceShare kopiert)
+    }
+
+    # TDP
+    if ($null -ne $script:ChkTDP) {
+        $tdpPath = $Config.OptionalComponents['TDP_SourcePath']
+        if ($tdpPath -and $tdpPath -ne '') {
+            if (-not (Test-Path -Path $tdpPath -ErrorAction SilentlyContinue)) {
+                Write-Log "WARNUNG: TDP-Quellpfad nicht erreichbar: $tdpPath"
+                Write-Log "         Checkbox 'TDP' wurde deaktiviert."
+                $script:ChkTDP.Checked = $false
+                $script:ChkTDP.Enabled = $false
+                $script:ChkTDP.Text    = 'TDP - Pfad nicht erreichbar'
+            }
+            else {
+                Write-Log "OK: TDP-Quellpfad erreichbar: $tdpPath"
+            }
+        }
+        else {
+            # TDP aktiviert aber kein Pfad konfiguriert
+            Write-Log "WARNUNG: TDP aktiviert aber kein TDP_SourcePath konfiguriert."
+            $script:ChkTDP.Checked = $false
+            $script:ChkTDP.Enabled = $false
+            $script:ChkTDP.Text    = 'TDP - Quellpfad fehlt in settings.ini'
+        }
+    }
+
+    # --- Ola Hallengren lokaler Fallback-Pfad ---
+    if ($Config.OlaSourcePath -and $Config.OlaSourcePath -ne '') {
+        if (-not (Test-Path -Path $Config.OlaSourcePath -ErrorAction SilentlyContinue)) {
+            Write-Log "WARNUNG: OlaSourcePath nicht erreichbar: $($Config.OlaSourcePath)"
+            Write-Log "         GitHub-Download wird als Fallback verwendet."
+        }
+        else {
+            Write-Log "OK: OlaSourcePath erreichbar: $($Config.OlaSourcePath)"
+        }
+    }
+
+    return $sourceShareOk
+}
+
 #endregion
 
 #region --- Formular aufbauen ---
@@ -514,7 +631,7 @@ Get-ChildItem '$modulesDir' -Filter '*.psm1' | ForEach-Object {
 
     #region --- Event-Handler ---
 
-    # Form_Shown: BringToFront + initiales Log
+    # Form_Shown: BringToFront + initiales Log + Pfadprüfung
     $form.Add_Shown({
         $form.BringToFront()
         $form.Activate()
@@ -523,9 +640,13 @@ Get-ChildItem '$modulesDir' -Filter '*.psm1' | ForEach-Object {
         Write-Log 'SQL Server Setup Tool gestartet.'
         Write-Log "Konfiguration geladen. Domain: $domainInfo"
         Write-Log "Sortierung: $($script:Config.DefaultCollation)"
-        Write-Log "Quell-Share: $($script:Config.SourceShare)"
-        if ($script:Config.DbaTools) {
-            Write-Log "dbaTools-Share: $($script:Config.DbaTools.ShareBasePath)"
+        Write-Log '--- Pfad-Pruefung ---'
+        $sourceOk = Invoke-PathValidation -Config $script:Config
+        if ($sourceOk) {
+            Write-Log '--- Pfad-Pruefung abgeschlossen. Alle kritischen Pfade erreichbar. ---'
+        }
+        else {
+            Write-Log '--- Pfad-Pruefung: KRITISCHE PFADE FEHLEN - Installation gesperrt. ---'
         }
     })
 
