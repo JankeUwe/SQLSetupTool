@@ -630,7 +630,8 @@ function Show-SetupForm {
 
     $script:BtnCopy    = Add-Button -Parent $gbActions -Text 'Quellen kopieren'    -X 10  -Y 15 -Width 140
     $script:BtnInstall = Add-Button -Parent $gbActions -Text 'Installation starten' -X 160 -Y 15 -Width 150
-    $script:BtnConfig  = Add-Button -Parent $gbActions -Text 'Konfiguration...'    -X 320 -Y 15 -Width 130
+    $script:BtnConfig          = Add-Button -Parent $gbActions -Text 'Konfiguration...' -X 320 -Y 15 -Width 130
+    $script:BtnConfig.Visible  = $false   # Nur ueber Start-AdminConfig.cmd erreichbar
     $script:BtnClose   = Add-Button -Parent $gbActions -Text 'Schliessen'          -X 680 -Y 15 -Width 90
 
     #=== Log-Fenster ===

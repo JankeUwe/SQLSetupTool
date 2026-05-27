@@ -560,7 +560,30 @@ function Show-ConfigForm {
     # INI einlesen
     # ---------------------------------------------------------------------------
     $ini       = _ReadIni -Path $IniPath
-    $scriptDir = Split-Path (Split-Path $IniPath -Parent) -Parent   # <ToolRoot>
+    $configDir = Split-Path $IniPath -Parent
+    $scriptDir = Split-Path $configDir -Parent   # <ToolRoot>
+
+    # Domain-Profil fuer ZielBasePath-Vorbelegung lesen
+    function _GetDomainZielPath {
+        try {
+            $cs = Get-WmiObject -Class Win32_ComputerSystem -ErrorAction SilentlyContinue
+            $dom = if ($cs -and $cs.PartOfDomain) { $cs.Domain.ToUpper().Split('.')[0] } else { $null }
+            $domainsDir = Join-Path $configDir 'domains'
+            foreach ($try in @($dom, 'DEFAULT')) {
+                if ($null -ne $try -and $try -ne '') {
+                    $p = Join-Path $domainsDir "$try.ini"
+                    if (Test-Path $p) {
+                        $d = _ReadIni -Path $p
+                        if ($d.ContainsKey('ZielServer') -and $d['ZielServer']['BasePath'] -ne '') {
+                            return $d['ZielServer']['BasePath']
+                        }
+                    }
+                }
+            }
+        } catch {}
+        return ''
+    }
+    $zielBasePath = _GetDomainZielPath
 
     # ---------------------------------------------------------------------------
     # collations.txt laden fuer CollationConverter
@@ -665,20 +688,32 @@ function Show-ConfigForm {
     $chkStdUpdateIni = _Chk -P $gbStd -T 'UpdateIni - Pfade in settings.ini aktualisieren' -X 10 -Y 86 -W 340
     $btnStd   = _Btn -P $gbStd -T 'Struktur anlegen' -X 635 -Y 84 -W 145
 
-    # --- Ziel-Server-Variante (ehemals FI-TS) ---
-    $gbFiTS = _Gb -P $tab2 -T 'Ziel-Server-Variante (lokal anlegen + als ZIP uebertragen)' -X 5 -Y 130 -W 815 -H 148
+    # --- Ziel-Server-Export ---
+    # BasePath wird aus Domain-Profil vorbelegt. GroupBox deaktiviert wenn kein Pfad konfiguriert.
+    $gbFiTS = _Gb -P $tab2 -T 'Ziel-Server-Export (lokal generieren + als ZIP uebertragen)' -X 5 -Y 130 -W 815 -H 120
     _Lbl -P $gbFiTS -T 'BasePath:' -X 10 -Y 24 -W 75
-    $tbFiTSPath = _Tb -P $gbFiTS -X 90 -Y 22 -W 625 -Def 'W:\75084-Datenbanken\MSSQL\SQLSources'
-    _BrowseBtn -P $gbFiTS -X 720 -Y 22 -Tb $tbFiTSPath | Out-Null
+    $tbFiTSPath = _Tb -P $gbFiTS -X 90 -Y 22 -W 590 -Def $zielBasePath
+    _BrowseBtn -P $gbFiTS -X 685 -Y 22 -Tb $tbFiTSPath | Out-Null
     _Lbl -P $gbFiTS -T 'Versionen:' -X 10 -Y 56 -W 75
     $tbFiTSVer = _Tb -P $gbFiTS -X 90 -Y 54 -W 220 -Def (_IniVal 'Versions' 'Available' '2019,2022,2025')
-    $chkFiTSUpdateIni = _Chk -P $gbFiTS -T 'UpdateIni - Zielpfade in settings.ini schreiben' -X 10 -Y 86 -W 320
-    $chkFiTSZip = _Chk -P $gbFiTS -T 'Als ZIP packen:' -X 10 -Y 114 -W 115
-    $tbZipPath  = _Tb  -P $gbFiTS -X 128 -Y 112 -W 487 -Def 'C:\Temp\SQLSources-Ziel.zip' -Enabled $false
-    $chkFiTSZip.Add_CheckedChanged({
-        $tbZipPath.Enabled = $chkFiTSZip.Checked
+    _Lbl -P $gbFiTS -T 'ZIP-Ziel:' -X 10 -Y 88 -W 75
+    $tbZipPath = _Tb -P $gbFiTS -X 90 -Y 86 -W 590 -Def 'C:\Temp\SQLSources-Ziel.zip'
+    _BrowseBtn -P $gbFiTS -X 685 -Y 86 -Tb $tbZipPath | Out-Null
+    $btnFiTS = _Btn -P $gbFiTS -T 'Als ZIP generieren' -X 715 -Y 52 -W 90 -H 26
+
+    # Hinweis wenn kein Domain-Profil-Pfad vorhanden
+    $lblZielHint          = New-Object System.Windows.Forms.Label
+    $lblZielHint.Text     = 'Kein ZielBasePath im Domain-Profil konfiguriert. Pfad manuell eintragen oder via Domain-Konfiguration setzen.'
+    $lblZielHint.Location = New-Object System.Drawing.Point(10, 122)
+    $lblZielHint.Size     = New-Object System.Drawing.Size(795, 18)
+    $lblZielHint.ForeColor = [System.Drawing.Color]::DarkOrange
+    $lblZielHint.Visible  = ($zielBasePath -eq '')
+    $tab2.Controls.Add($lblZielHint)
+
+    # BasePath-TextChanged: Hint ausblenden sobald etwas eingetragen
+    $tbFiTSPath.Add_TextChanged({
+        $lblZielHint.Visible = ($tbFiTSPath.Text.Trim() -eq '')
     })
-    $btnFiTS = _Btn -P $gbFiTS -T 'Struktur anlegen' -X 635 -Y 112 -W 145
 
     # --- Ausgabe ---
     $gbLog2        = _Gb -P $tab2 -T 'Ausgabe' -X 5 -Y 290 -W 815 -H 285
@@ -730,7 +765,7 @@ function Show-ConfigForm {
     # =========================================================================
     $tabs.Add_SelectedIndexChanged({
         if ($tabs.SelectedIndex -eq 1) {
-            # Tab 2: Vorbelegung aus PropertyGrid-Objekt synchronisieren
+            # Tab 2: Versionen aus Tab 1 synchronisieren
             if ($tbStdPath.Text -eq '') { $tbStdPath.Text = $pathConfig.SourceShare }
             $tbStdVer.Text  = $pathConfig.Versionen
             $tbFiTSVer.Text = $pathConfig.Versionen
@@ -780,23 +815,21 @@ function Show-ConfigForm {
     })
 
     # =========================================================================
-    # Tab 2: Ziel-Server-Struktur anlegen (+ optionales ZIP)
+    # Tab 2: Ziel-Server-Export als ZIP generieren
     # =========================================================================
     $btnFiTS.Add_Click({
-        $scriptPath = Join-Path $scriptDir 'Scripts\New-SqlSourceStructure-FiTS.ps1'
-        if (-not (Test-Path $scriptPath)) {
+        $fitsBase = $tbFiTSPath.Text.Trim()
+        $zipDest  = $tbZipPath.Text.Trim()
+        $versions = $tbFiTSVer.Text.Trim()
+
+        if ($fitsBase -eq '') {
             [System.Windows.Forms.MessageBox]::Show(
-                "Skript nicht gefunden:`n$scriptPath",
+                'Bitte BasePath des Ziel-Servers angeben.',
                 'Fehler', [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+                [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
             return
         }
-
-        $doZip    = $chkFiTSZip.Checked
-        $zipDest  = $tbZipPath.Text.Trim()
-        $fitsBase = $tbFiTSPath.Text.Trim()
-
-        if ($doZip -and $zipDest -eq '') {
+        if ($zipDest -eq '') {
             [System.Windows.Forms.MessageBox]::Show(
                 'Bitte ZIP-Zielpfad angeben.',
                 'Fehler', [System.Windows.Forms.MessageBoxButtons]::OK,
@@ -808,63 +841,69 @@ function Show-ConfigForm {
         $btnStd.Enabled  = $false
         $btnFiTS.Enabled = $false
 
-        $argList = [System.Collections.Generic.List[string]]@(
-            '-NonInteractive', '-NoProfile', '-ExecutionPolicy', 'Bypass',
-            '-File', $scriptPath,
-            '-BasePath', $fitsBase,
-            '-Versions', $tbFiTSVer.Text.Trim(),
-            '-Force'
-        )
-        if ($chkFiTSUpdateIni.Checked) {
-            $argList.Add('-UpdateIni')
-            $argList.Add('-IniPath')
-            $argList.Add($IniPath)
-        }
+        # Struktur erst lokal aufbauen (New-SqlSourceStructure-FiTS.ps1), dann als ZIP
+        $scriptPath = Join-Path $scriptDir 'Scripts\New-SqlSourceStructure-FiTS.ps1'
+        $useScript  = Test-Path $scriptPath
 
         $rs = [runspacefactory]::CreateRunspace()
         $rs.ApartmentState = 'STA'
         $rs.ThreadOptions  = 'ReuseThread'
         $rs.Open()
-        $rs.SessionStateProxy.SetVariable('_form',     $form)
-        $rs.SessionStateProxy.SetVariable('_logBox',   $cfgLogBox)
-        $rs.SessionStateProxy.SetVariable('_args',     ([string[]]$argList))
-        $rs.SessionStateProxy.SetVariable('_doZip',    $doZip)
-        $rs.SessionStateProxy.SetVariable('_zipDest',  $zipDest)
-        $rs.SessionStateProxy.SetVariable('_fitsBase', $fitsBase)
-        $rs.SessionStateProxy.SetVariable('_btnStd',   $btnStd)
-        $rs.SessionStateProxy.SetVariable('_btnFiTS',  $btnFiTS)
+        $rs.SessionStateProxy.SetVariable('_form',       $form)
+        $rs.SessionStateProxy.SetVariable('_logBox',     $cfgLogBox)
+        $rs.SessionStateProxy.SetVariable('_fitsBase',   $fitsBase)
+        $rs.SessionStateProxy.SetVariable('_zipDest',    $zipDest)
+        $rs.SessionStateProxy.SetVariable('_versions',   $versions)
+        $rs.SessionStateProxy.SetVariable('_scriptPath', $scriptPath)
+        $rs.SessionStateProxy.SetVariable('_useScript',  $useScript)
+        $rs.SessionStateProxy.SetVariable('_btnStd',     $btnStd)
+        $rs.SessionStateProxy.SetVariable('_btnFiTS',    $btnFiTS)
 
         $ps = [powershell]::Create()
         $ps.Runspace = $rs
         $ps.AddScript({
-            $output = & powershell.exe @_args 2>&1
-            foreach ($line in $output) {
-                $lineStr = $line.ToString()
-                $_form.Invoke([System.Windows.Forms.MethodInvoker]{
-                    $_logBox.AppendText("$lineStr`n")
-                    $_logBox.ScrollToCaret()
-                })
-            }
-            if ($_doZip) {
-                $_form.Invoke([System.Windows.Forms.MethodInvoker]{
-                    $_logBox.AppendText("Erstelle ZIP: $_zipDest`n")
-                    $_logBox.ScrollToCaret()
-                })
-                try {
-                    if (Test-Path $_zipDest) { Remove-Item $_zipDest -Force }
-                    Compress-Archive -Path "$_fitsBase\*" -DestinationPath $_zipDest -ErrorAction Stop
+            # Schritt 1: Struktur aufbauen (wenn Skript vorhanden)
+            if ($_useScript) {
+                $argList = @('-NonInteractive','-NoProfile','-ExecutionPolicy','Bypass',
+                             '-File', $_scriptPath,
+                             '-BasePath', $_fitsBase,
+                             '-Versions', $_versions,
+                             '-Force')
+                $output = & powershell.exe @argList 2>&1
+                foreach ($line in $output) {
+                    $lineStr = $line.ToString()
                     $_form.Invoke([System.Windows.Forms.MethodInvoker]{
-                        $_logBox.AppendText("ZIP erstellt: $_zipDest`n")
-                        $_logBox.ScrollToCaret()
-                    })
-                } catch {
-                    $errMsg = $_.Exception.Message
-                    $_form.Invoke([System.Windows.Forms.MethodInvoker]{
-                        $_logBox.AppendText("FEHLER ZIP: $errMsg`n")
+                        $_logBox.AppendText("$lineStr`n")
                         $_logBox.ScrollToCaret()
                     })
                 }
+            } else {
+                $_form.Invoke([System.Windows.Forms.MethodInvoker]{
+                    $_logBox.AppendText("Hinweis: New-SqlSourceStructure-FiTS.ps1 nicht gefunden - uebersprungen.`n")
+                    $_logBox.ScrollToCaret()
+                })
             }
+
+            # Schritt 2: ZIP erstellen
+            $_form.Invoke([System.Windows.Forms.MethodInvoker]{
+                $_logBox.AppendText("Erstelle ZIP: $_zipDest`n")
+                $_logBox.ScrollToCaret()
+            })
+            try {
+                if (Test-Path $_zipDest) { Remove-Item $_zipDest -Force }
+                Compress-Archive -Path "$_fitsBase\*" -DestinationPath $_zipDest -ErrorAction Stop
+                $_form.Invoke([System.Windows.Forms.MethodInvoker]{
+                    $_logBox.AppendText("OK: ZIP erstellt: $_zipDest`n")
+                    $_logBox.ScrollToCaret()
+                })
+            } catch {
+                $errMsg = $_.Exception.Message
+                $_form.Invoke([System.Windows.Forms.MethodInvoker]{
+                    $_logBox.AppendText("FEHLER ZIP: $errMsg`n")
+                    $_logBox.ScrollToCaret()
+                })
+            }
+
             $_form.Invoke([System.Windows.Forms.MethodInvoker]{
                 $_btnStd.Enabled  = $true
                 $_btnFiTS.Enabled = $true

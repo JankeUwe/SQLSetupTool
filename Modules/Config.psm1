@@ -234,6 +234,97 @@ function Get-sqmSQLToolConfig {
 }
 
 # ---------------------------------------------------------------------------
+# Domain-Profil laden (Config\domains\<DOMAIN>.ini oder DEFAULT.ini)
+# ---------------------------------------------------------------------------
+function Get-DomainProfile {
+    <#
+    .SYNOPSIS
+        Laedt das Domain-Profil fuer die angegebene Domain.
+    .DESCRIPTION
+        Sucht in Config\domains\ zuerst nach <DOMAIN>.ini, dann nach DEFAULT.ini.
+        Gibt $null zurueck wenn weder Domain-Profil noch DEFAULT.ini vorhanden.
+    .PARAMETER ConfigDir
+        Verzeichnis in dem der domains-Unterordner liegt (i.d.R. Config\).
+    .PARAMETER Domain
+        NetBIOS-Domainname (Grossbuchstaben). Kann $null sein.
+    .OUTPUTS
+        PSCustomObject mit DisplayName, Collation, SysadminGroups, MonitoringType,
+        DiskLayout (Hashtable), ZielBasePath. Fehlende Felder sind leer/null.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ConfigDir,
+        [string]$Domain
+    )
+
+    $domainsDir = Join-Path $ConfigDir 'domains'
+    $profileIni = $null
+
+    # 1. Domain-spezifisches Profil suchen
+    if ($Domain -and $Domain -ne '') {
+        $domPath = Join-Path $domainsDir "$Domain.ini"
+        if (Test-Path $domPath) {
+            $profileIni = Read-IniFile -Path $domPath
+            Write-Verbose "DomainProfile: Profil geladen fuer Domain '$Domain': $domPath"
+        }
+    }
+
+    # 2. Fallback auf DEFAULT.ini
+    if ($null -eq $profileIni) {
+        $defPath = Join-Path $domainsDir 'DEFAULT.ini'
+        if (Test-Path $defPath) {
+            $profileIni = Read-IniFile -Path $defPath
+            Write-Verbose "DomainProfile: DEFAULT.ini geladen: $defPath"
+        }
+    }
+
+    # 3. domains-Ordner nicht vorhanden oder leer -> $null
+    if ($null -eq $profileIni) {
+        Write-Verbose "DomainProfile: Kein Profil gefunden - verwende settings.ini-Werte."
+        return $null
+    }
+
+    # Helper: sicherer Zugriff auf INI-Wert
+    function _PVal { param($s, $k, $d = '')
+        if ($profileIni.Contains($s) -and $profileIni[$s].Contains($k)) {
+            return $profileIni[$s][$k]
+        }
+        return $d
+    }
+
+    # DiskLayout als Hashtable aufbauen
+    $diskLayout = $null
+    if ($profileIni.Contains('DiskLayout')) {
+        $diskLayout = [ordered]@{}
+        foreach ($key in $profileIni['DiskLayout'].Keys) {
+            $diskLayout[$key] = $profileIni['DiskLayout'][$key]
+        }
+    }
+
+    # SysadminGroups als Array
+    $sysAdminGroups = @()
+    $groupsRaw = _PVal 'SysadminGroups' 'Groups'
+    if ($groupsRaw -and $groupsRaw.Trim() -ne '') {
+        $sysAdminGroups = $groupsRaw -split ',' |
+                          ForEach-Object { $_.Trim() } |
+                          Where-Object { $_ -ne '' }
+    }
+
+    # MonitoringType als int
+    $monType = 1
+    $monRaw  = _PVal 'Monitoring' 'Type' '1'
+    if ($monRaw -match '^\d+$') { $monType = [int]$monRaw }
+
+    return [PSCustomObject]@{
+        DisplayName    = _PVal 'Profile'    'DisplayName'
+        Collation      = _PVal 'Collation'  'Default'
+        SysadminGroups = $sysAdminGroups
+        MonitoringType = $monType
+        DiskLayout     = $diskLayout
+        ZielBasePath   = _PVal 'ZielServer' 'BasePath'
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Hauptfunktion: Konfigurationsobjekt aufbauen
 # ---------------------------------------------------------------------------
 function Get-SetupConfig {
@@ -247,9 +338,10 @@ function Get-SetupConfig {
         [Parameter(Mandatory)][string]$IniPath
     )
 
-    $ini       = Read-IniFile -Path $IniPath
-    $configDir = Split-Path $IniPath -Parent
-    $domain    = Get-CurrentDomain
+    $ini           = Read-IniFile -Path $IniPath
+    $configDir     = Split-Path $IniPath -Parent
+    $domain        = Get-CurrentDomain
+    $domainProfile = Get-DomainProfile -ConfigDir $configDir -Domain $domain
 
     # -- [General] -----------------------------------------------------------
     $general = $ini['General']
@@ -269,13 +361,21 @@ function Get-SetupConfig {
     }
 
     # -- [Collations] --------------------------------------------------------
+    # Prioritaet: 1. Domain-Profil, 2. settings.ini Domain_*, 3. settings.ini Standard
     $stdCollation    = 'SQL_Latin1_General_CP1_CI_AS'
     if ($general['DefaultCollation']) { $stdCollation = $general['DefaultCollation'] }
 
     $domainCollation = $null
-    if ($domain -and $ini.Contains('Collations') -and $ini['Collations'].Contains("Domain_$domain")) {
+
+    if ($domainProfile -and $domainProfile.Collation -and $domainProfile.Collation -ne '') {
+        # Domain-Profil hat Vorrang
+        $domainCollation = $domainProfile.Collation
+        $stdCollation    = $domainCollation
+    }
+    elseif ($domain -and $ini.Contains('Collations') -and $ini['Collations'].Contains("Domain_$domain")) {
+        # Rueckwaertskompatibilitaet: Domain_* in settings.ini
         $domainCollation = $ini['Collations']["Domain_$domain"]
-        $stdCollation    = $domainCollation   # Domaenen-Standard als Vorauswahl
+        $stdCollation    = $domainCollation
     }
     elseif ($ini.Contains('Collations') -and $ini['Collations']['Standard']) {
         $stdCollation = $ini['Collations']['Standard']
@@ -300,11 +400,17 @@ function Get-SetupConfig {
     }
 
     # -- [DiskLayout] --------------------------------------------------------
+    # Prioritaet: 1. Domain-Profil, 2. settings.ini DiskLayout_<Domain>, 3. DiskLayout_Standard
     $diskSectionName = 'DiskLayout_Standard'
     if ($domain -and $ini.Contains("DiskLayout_$domain")) {
         $diskSectionName = "DiskLayout_$domain"
     }
     $diskLayout = $ini[$diskSectionName]
+
+    if ($domainProfile -and $domainProfile.DiskLayout -and $domainProfile.DiskLayout.Count -gt 0) {
+        $diskLayout      = $domainProfile.DiskLayout
+        $diskSectionName = "DomainProfile:$domain"
+    }
 
     # -- [Paths] -------------------------------------------------------------
     $paths = $ini['Paths']
@@ -324,6 +430,7 @@ function Get-SetupConfig {
     }
 
     # -- [Monitoring] --------------------------------------------------------
+    # Prioritaet: 1. Domain-Profil, 2. settings.ini Domain_*, 3. settings.ini DefaultType
     $monitoringEnabled = $true
     $monitoringDefault = 1
     $monitoringTypes   = @()
@@ -338,6 +445,10 @@ function Get-SetupConfig {
         if ($ini['Monitoring']['Types']) {
             $monitoringTypes = $ini['Monitoring']['Types'] -split ',' | ForEach-Object { $_.Trim() }
         }
+    }
+    # Domain-Profil ueberschreibt Monitoring-Default
+    if ($domainProfile -and $null -ne $domainProfile.MonitoringType) {
+        $monitoringDefault = $domainProfile.MonitoringType
     }
 
     # -- [Installation] ----------------------------------------------------------
@@ -385,8 +496,12 @@ function Get-SetupConfig {
     }
 
     # -- [SysadminGroups] --------------------------------------------------------
+    # Prioritaet: 1. Domain-Profil, 2. settings.ini Domain_*, 3. settings.ini Standard
     $sysadminGroups = @()
-    if ($ini.Contains('SysadminGroups')) {
+    if ($domainProfile -and $domainProfile.SysadminGroups -and $domainProfile.SysadminGroups.Count -gt 0) {
+        $sysadminGroups = $domainProfile.SysadminGroups
+    }
+    elseif ($ini.Contains('SysadminGroups')) {
         $sgSection = $ini['SysadminGroups']
         $sgKey = $null
         if ($domain -and $sgSection.Contains("Domain_$domain")) {
@@ -503,11 +618,13 @@ function Get-SetupConfig {
 
         # Metadaten
         Domain              = $domain
+        DomainProfile       = $domainProfile
+        ZielBasePath        = if ($domainProfile) { $domainProfile.ZielBasePath } else { '' }
         ConfigDir           = $configDir
         IniPath             = $IniPath
     }
 }
 
-Export-ModuleMember -Function Get-SetupConfig, Get-CurrentDomain, Get-CollationList, Get-DbaToolsConfig, Get-sqmSQLToolConfig
+Export-ModuleMember -Function Get-SetupConfig, Get-CurrentDomain, Get-CollationList, Get-DbaToolsConfig, Get-sqmSQLToolConfig, Get-DomainProfile
 
 
