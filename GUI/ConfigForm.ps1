@@ -563,8 +563,8 @@ function Show-ConfigForm {
     $configDir = Split-Path $IniPath -Parent
     $scriptDir = Split-Path $configDir -Parent   # <ToolRoot>
 
-    # Domain-Profil fuer ZielBasePath-Vorbelegung lesen
-    function _GetDomainZielPath {
+    # Domain-Profil fuer SQLSourcesPath-Vorbelegung lesen
+    function _GetDomainSQLSourcesPath {
         try {
             $cs = Get-WmiObject -Class Win32_ComputerSystem -ErrorAction SilentlyContinue
             $dom = if ($cs -and $cs.PartOfDomain) { $cs.Domain.ToUpper().Split('.')[0] } else { $null }
@@ -574,8 +574,8 @@ function Show-ConfigForm {
                     $p = Join-Path $domainsDir "$try.ini"
                     if (Test-Path $p) {
                         $d = _ReadIni -Path $p
-                        if ($d.ContainsKey('ZielServer') -and $d['ZielServer']['BasePath'] -ne '') {
-                            return $d['ZielServer']['BasePath']
+                        if ($d.ContainsKey('SQLSources') -and $d['SQLSources']['SourcePath'] -ne '') {
+                            return $d['SQLSources']['SourcePath']
                         }
                     }
                 }
@@ -583,7 +583,7 @@ function Show-ConfigForm {
         } catch {}
         return ''
     }
-    $zielBasePath = _GetDomainZielPath
+    $zielBasePath = _GetDomainSQLSourcesPath
 
     # ---------------------------------------------------------------------------
     # collations.txt laden fuer CollationConverter
@@ -704,7 +704,7 @@ function Show-ConfigForm {
 
     # Hinweis-Label INNERHALB der GroupBox (nicht auf dem Tab - wuerde sonst von GroupBox ueberdeckt)
     $lblZielHint           = New-Object System.Windows.Forms.Label
-    $lblZielHint.Text      = 'Hinweis: Kein ZielBasePath im Domain-Profil. Pfad manuell eintragen oder in Start-DomainConfig.cmd konfigurieren.'
+    $lblZielHint.Text      = 'Hinweis: Kein SQLSources-Pfad im Domain-Profil. Pfad manuell eintragen oder in Start-DomainConfig.cmd konfigurieren.'
     $lblZielHint.Location  = New-Object System.Drawing.Point(10, 122)
     $lblZielHint.Size      = New-Object System.Drawing.Size(790, 18)
     $lblZielHint.ForeColor = [System.Drawing.Color]::DarkOrange

@@ -249,7 +249,7 @@ function Get-DomainProfile {
         NetBIOS-Domainname (Grossbuchstaben). Kann $null sein.
     .OUTPUTS
         PSCustomObject mit DisplayName, Collation, SysadminGroups, MonitoringType,
-        DiskLayout (Hashtable), ZielBasePath. Fehlende Felder sind leer/null.
+        DiskLayout (Hashtable), SQLSourcesPath. Fehlende Felder sind leer/null.
     #>
     param(
         [Parameter(Mandatory)][string]$ConfigDir,
@@ -320,7 +320,7 @@ function Get-DomainProfile {
         SysadminGroups = $sysAdminGroups
         MonitoringType = $monType
         DiskLayout     = $diskLayout
-        ZielBasePath   = _PVal 'ZielServer' 'BasePath'
+        SQLSourcesPath = _PVal 'SQLSources' 'SourcePath'
     }
 }
 
@@ -486,13 +486,20 @@ function Get-SetupConfig {
         $splunkEnabled = ($ini['PostInstall']['SplunkEnabled'].Trim() -eq 'true')
     }
 
-    # SqlScriptsPath: explizit aus INI oder Fallback auf <SourceShare>\Scripts
+    # Effektiver SourceShare: Domain-Profil SQLSourcesPath hat Vorrang vor globalem SourceShare.
+    $effectiveSourceShare = $general['SourceShare']
+    if ($domainProfile -and $domainProfile.SQLSourcesPath -and $domainProfile.SQLSourcesPath -ne '') {
+        $effectiveSourceShare = $domainProfile.SQLSourcesPath
+        Write-Verbose "SourceShare: Domain-spezifischer SQLSourcesPath verwendet: $effectiveSourceShare"
+    }
+
+    # SqlScriptsPath: explizit aus INI oder Fallback auf <effectiveSourceShare>\Scripts
     $sqlScriptsPath = ''
     if ($ini.Contains('PostInstall') -and $ini['PostInstall'].Contains('SqlScriptsPath')) {
         $sqlScriptsPath = $ini['PostInstall']['SqlScriptsPath'].Trim()
     }
-    if ($sqlScriptsPath -eq '' -and $general['SourceShare']) {
-        $sqlScriptsPath = Join-Path $general['SourceShare'] 'Scripts'
+    if ($sqlScriptsPath -eq '' -and $effectiveSourceShare) {
+        $sqlScriptsPath = Join-Path $effectiveSourceShare 'Scripts'
     }
 
     # -- [SysadminGroups] --------------------------------------------------------
@@ -559,7 +566,7 @@ function Get-SetupConfig {
         DefaultEdition      = $cfgEdition
         DefaultInstanceName = $cfgInstanceName
         DefaultCollation    = $stdCollation
-        SourceShare         = $general['SourceShare']
+        SourceShare         = $effectiveSourceShare
 
         # Listen fuer Comboboxen
         Versions            = $versions
@@ -619,7 +626,7 @@ function Get-SetupConfig {
         # Metadaten
         Domain              = $domain
         DomainProfile       = $domainProfile
-        ZielBasePath        = if ($domainProfile) { $domainProfile.ZielBasePath } else { '' }
+        SQLSourcesPath      = if ($domainProfile) { $domainProfile.SQLSourcesPath } else { '' }
         ConfigDir           = $configDir
         IniPath             = $IniPath
     }

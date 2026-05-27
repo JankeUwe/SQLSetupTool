@@ -64,7 +64,7 @@ function Show-DomainConfigForm {
               [string]$Groups, [string]$MonType,
               [string]$DataDrive, [string]$LogDrive, [string]$TempDrive,
               [string]$BackupDrive, [string]$InstallDrive,
-              [string]$ZielBasePath)
+              [string]$SQLSourcesPath)
 
         $lines = @(
             "# Domain-Profil: $(Split-Path $Path -LeafBase)",
@@ -90,9 +90,11 @@ function Show-DomainConfigForm {
             "BackupDrive  = $BackupDrive",
             "InstallDrive = $InstallDrive",
             '',
-            '[ZielServer]',
-            '# Zielpfad auf dem Ziel-Server fuer SQLSources-Export (ZIP)',
-            "BasePath = $ZielBasePath"
+            '[SQLSources]',
+            '# Pfad zu den SQL-Installationsquellen auf Servern dieser Domain.',
+            '# Das Setup-Tool sucht hier nach SQL<Version>\SQL_Install\setup.exe usw.',
+            '# Leer = globaler SourceShare aus settings.ini wird verwendet.',
+            "SourcePath = $SQLSourcesPath"
         )
         Set-Content -Path $Path -Value $lines -Encoding UTF8
     }
@@ -268,10 +270,10 @@ function Show-DomainConfigForm {
     $tabGen.Controls.Add($sepLine)
 
     $y += 12
-    _Lbl -P $tabGen -T 'Ziel-Server BasePath:' -X 10 -Y $y -W 150
-    $tbZielPath = _Tb -P $tabGen -X 165 -Y $y -W 390
-    _BrowseBtn -P $tabGen -X 560 -Y $y -Tb $tbZielPath | Out-Null
-    _Lbl -P $tabGen -T '(Leer = Ziel-Server-Export deaktiviert)' -X 165 -Y ($y+26) -W 360
+    _Lbl -P $tabGen -T 'SQLSources-Pfad:' -X 10 -Y $y -W 150
+    $tbSQLSourcesPath = _Tb -P $tabGen -X 165 -Y $y -W 390
+    _BrowseBtn -P $tabGen -X 560 -Y $y -Tb $tbSQLSourcesPath | Out-Null
+    _Lbl -P $tabGen -T '(Leer = globaler SourceShare aus settings.ini wird verwendet)' -X 165 -Y ($y+26) -W 420
 
     # =========================================================================
     # Tab 2: Laufwerke
@@ -334,7 +336,7 @@ function Show-DomainConfigForm {
         if ($cbCollation.Items.Count -gt 0) { $cbCollation.SelectedIndex = 0 }
         $tbGroups.Text      = ''
         if ($cbMonType.Items.Count -gt 0)   { $cbMonType.SelectedIndex = 1 }
-        $tbZielPath.Text    = ''
+        $tbSQLSourcesPath.Text = ''
         if ($cbDataDrive.Items.Contains('G'))    { $cbDataDrive.SelectedItem    = 'G' }
         if ($cbLogDrive.Items.Contains('H'))     { $cbLogDrive.SelectedItem     = 'H' }
         if ($cbTempDrive.Items.Contains('I'))    { $cbTempDrive.SelectedItem    = 'I' }
@@ -361,7 +363,7 @@ function Show-DomainConfigForm {
         if ($monRaw -match '^\d+$') { $monIdx = [int]$monRaw }
         if ($monIdx -lt $cbMonType.Items.Count) { $cbMonType.SelectedIndex = $monIdx }
 
-        $tbZielPath.Text = _IniVal $d 'ZielServer' 'BasePath'
+        $tbSQLSourcesPath.Text = _IniVal $d 'SQLSources' 'SourcePath'
 
         $dd = _IniVal $d 'DiskLayout' 'DataDrive'    'G'
         $ld = _IniVal $d 'DiskLayout' 'LogDrive'     'H'
@@ -425,7 +427,7 @@ function Show-DomainConfigForm {
         _WriteProfile -Path $newPath -DisplayName $newName `
             -Collation 'Latin1_General_CI_AS' -Groups '' -MonType '1' `
             -DataDrive 'G' -LogDrive 'H' -TempDrive 'I' `
-            -BackupDrive 'F' -InstallDrive 'C' -ZielBasePath ''
+            -BackupDrive 'F' -InstallDrive 'C' -SQLSourcesPath ''
         _RefreshList -SelectName $newName
     })
 
@@ -463,7 +465,7 @@ function Show-DomainConfigForm {
             -TempDrive    $cbTempDrive.SelectedItem.ToString() `
             -BackupDrive  $cbBackupDrive.SelectedItem.ToString() `
             -InstallDrive $cbInstallDrive.SelectedItem.ToString() `
-            -ZielBasePath $tbZielPath.Text.Trim()
+            -SQLSourcesPath $tbSQLSourcesPath.Text.Trim()
         [System.Windows.Forms.MessageBox]::Show(
             "Profil '$selName' gespeichert.",
             'Gespeichert', 'OK', 'Information') | Out-Null
