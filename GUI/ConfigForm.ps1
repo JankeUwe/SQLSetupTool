@@ -689,8 +689,9 @@ function Show-ConfigForm {
     $btnStd   = _Btn -P $gbStd -T 'Struktur anlegen' -X 635 -Y 84 -W 145
 
     # --- Ziel-Server-Export ---
-    # BasePath wird aus Domain-Profil vorbelegt. GroupBox deaktiviert wenn kein Pfad konfiguriert.
-    $gbFiTS = _Gb -P $tab2 -T 'Ziel-Server-Export (lokal generieren + als ZIP uebertragen)' -X 5 -Y 130 -W 815 -H 120
+    # BasePath wird aus Domain-Profil vorbelegt.
+    # GroupBox-Hoehe: 148 (mit Hinweis-Label) damit nichts abgeschnitten wird.
+    $gbFiTS = _Gb -P $tab2 -T 'Ziel-Server-Export (lokal generieren + als ZIP uebertragen)' -X 5 -Y 130 -W 815 -H 148
     _Lbl -P $gbFiTS -T 'BasePath:' -X 10 -Y 24 -W 75
     $tbFiTSPath = _Tb -P $gbFiTS -X 90 -Y 22 -W 590 -Def $zielBasePath
     _BrowseBtn -P $gbFiTS -X 685 -Y 22 -Tb $tbFiTSPath | Out-Null
@@ -701,16 +702,16 @@ function Show-ConfigForm {
     _BrowseBtn -P $gbFiTS -X 685 -Y 86 -Tb $tbZipPath | Out-Null
     $btnFiTS = _Btn -P $gbFiTS -T 'Als ZIP generieren' -X 715 -Y 52 -W 90 -H 26
 
-    # Hinweis wenn kein Domain-Profil-Pfad vorhanden
-    $lblZielHint          = New-Object System.Windows.Forms.Label
-    $lblZielHint.Text     = 'Kein ZielBasePath im Domain-Profil konfiguriert. Pfad manuell eintragen oder via Domain-Konfiguration setzen.'
-    $lblZielHint.Location = New-Object System.Drawing.Point(10, 122)
-    $lblZielHint.Size     = New-Object System.Drawing.Size(795, 18)
+    # Hinweis-Label INNERHALB der GroupBox (nicht auf dem Tab - wuerde sonst von GroupBox ueberdeckt)
+    $lblZielHint           = New-Object System.Windows.Forms.Label
+    $lblZielHint.Text      = 'Hinweis: Kein ZielBasePath im Domain-Profil. Pfad manuell eintragen oder in Start-DomainConfig.cmd konfigurieren.'
+    $lblZielHint.Location  = New-Object System.Drawing.Point(10, 122)
+    $lblZielHint.Size      = New-Object System.Drawing.Size(790, 18)
     $lblZielHint.ForeColor = [System.Drawing.Color]::DarkOrange
-    $lblZielHint.Visible  = ($zielBasePath -eq '')
-    $tab2.Controls.Add($lblZielHint)
+    $lblZielHint.Visible   = ($zielBasePath -eq '')
+    $gbFiTS.Controls.Add($lblZielHint)
 
-    # BasePath-TextChanged: Hint ausblenden sobald etwas eingetragen
+    # Hint ausblenden sobald etwas eingetragen
     $tbFiTSPath.Add_TextChanged({
         $lblZielHint.Visible = ($tbFiTSPath.Text.Trim() -eq '')
     })
