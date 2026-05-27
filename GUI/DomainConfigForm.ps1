@@ -284,7 +284,7 @@ function Show-DomainConfigForm {
                       'N','O','P','Q','R','S','T','U','V','W','X','Y','Z')
 
     function _DriveCb { param($P,$Label,$X,$Y,$Def='C')
-        _Lbl -P $P -T $Label -X $X -Y $Y -W 120
+        $null = _Lbl -P $P -T $Label -X $X -Y $Y -W 120   # Rueckgabewert unterdruecken!
         $c = New-Object System.Windows.Forms.ComboBox
         $c.Location = New-Object System.Drawing.Point(($X+125),$Y)
         $c.Size     = New-Object System.Drawing.Size(60,24)
@@ -304,9 +304,9 @@ function Show-DomainConfigForm {
     $cbBackupDrive  = _DriveCb -P $tabDisk -Label 'Backup-Laufwerk:'  -X 10  -Y 165 -Def 'F'
     $cbInstallDrive = _DriveCb -P $tabDisk -Label 'Install-Laufwerk:' -X 10  -Y 205 -Def 'C'
 
-    _Lbl -P $tabDisk -T '(DataDrive, LogDrive, TempDrive → SQL-Dateien)' -X 10 -Y 250 -W 450
-    _Lbl -P $tabDisk -T '(BackupDrive → Backup + SystemDB-Verzeichnis)'  -X 10 -Y 270 -W 450
-    _Lbl -P $tabDisk -T '(InstallDrive → SQL Server Binaerdateien)'       -X 10 -Y 290 -W 450
+    _Lbl -P $tabDisk -T '(DataDrive, LogDrive, TempDrive -> SQL-Dateien)' -X 10 -Y 250 -W 450
+    _Lbl -P $tabDisk -T '(BackupDrive -> Backup + SystemDB-Verzeichnis)'  -X 10 -Y 270 -W 450
+    _Lbl -P $tabDisk -T '(InstallDrive -> SQL Server Binaerdateien)'       -X 10 -Y 290 -W 450
 
     # =========================================================================
     # Footer: Speichern / Schliessen
