@@ -199,13 +199,13 @@ function Show-DomainConfigForm {
         $l = New-Object System.Windows.Forms.Label
         $l.Text=$T; $l.Location=New-Object System.Drawing.Point($X,$Y)
         $l.Size=New-Object System.Drawing.Size($W,$H); $l.TextAlign='MiddleLeft'
-        $P.Controls.Add($l); return $l }
+        [void]$P.Controls.Add($l); return $l }
 
     function _Tb { param($P,$X,$Y,$W=340,$Def='',$Enabled=$true)
         $t = New-Object System.Windows.Forms.TextBox
         $t.Location=New-Object System.Drawing.Point($X,$Y)
         $t.Size=New-Object System.Drawing.Size($W,24); $t.Text=$Def; $t.Enabled=$Enabled
-        $P.Controls.Add($t); return $t }
+        [void]$P.Controls.Add($t); return $t }
 
     function _Cb { param($P,$X,$Y,$W=340,$Items=@(),$Def='')
         $c = New-Object System.Windows.Forms.ComboBox
@@ -214,7 +214,7 @@ function Show-DomainConfigForm {
         foreach($i in $Items){ [void]$c.Items.Add($i) }
         if($Def -ne '' -and $c.Items.Contains($Def)){ $c.SelectedItem=$Def }
         elseif($c.Items.Count -gt 0){ $c.SelectedIndex=0 }
-        $P.Controls.Add($c); return $c }
+        [void]$P.Controls.Add($c); return $c }
 
     function _BrowseBtn { param($P,$X,$Y,$Tb)
         $b = New-Object System.Windows.Forms.Button
@@ -228,7 +228,7 @@ function Show-DomainConfigForm {
                 $dlg.SelectedPath=$tbRef.Text }
             if($dlg.ShowDialog()-eq[System.Windows.Forms.DialogResult]::OK){
                 $tbRef.Text=$dlg.SelectedPath } })
-        $P.Controls.Add($b); return $b }
+        [void]$P.Controls.Add($b); return $b }
 
     $y = 20
     _Lbl -P $tabGen -T 'Anzeigename:' -X 10 -Y $y -W 150
@@ -292,7 +292,7 @@ function Show-DomainConfigForm {
         foreach ($dl in $driveLetters) { [void]$c.Items.Add($dl) }
         if ($c.Items.Contains($Def)) { $c.SelectedItem = $Def }
         else { $c.SelectedIndex = 0 }
-        $P.Controls.Add($c)
+        [void]$P.Controls.Add($c)
         return $c
     }
 
