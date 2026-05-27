@@ -1,71 +1,120 @@
 # SQLSetupTool
 
-PowerShell WinForms-Tool zur vollautomatischen Installation und Konfiguration von SQL Server — entwickelt von [dtcSoftware](https://www.powershelldba.de) (Uwe Janke).
+PowerShell-basiertes WinForms-Tool zur standardisierten Installation und Konfiguration von Microsoft SQL Server in Enterprise-Umgebungen.
 
-## Übersicht
+Entwickelt von [Uwe Janke](https://www.powershelldba.de) | [powershelldba.de](https://www.powershelldba.de)
 
-`SQLSetupTool` ist eine grafische PowerShell-Anwendung (WinForms) die eine standardisierte, reproduzierbare SQL Server Installation auf Basis einer zentralen INI-Konfiguration durchführt. Alle Parameter werden vor der Installation validiert — keine interaktiven Setup-Dialoge mehr.
+---
 
-**Getestet auf:** Windows Server 2022 / SQL Server 2022
+## Rollenkonzept
 
-## Features
+Das Tool trennt Konfiguration strikt nach drei Rollen:
 
-- **WinForms GUI**: Übersichtliche Oberfläche zur Konfiguration aller Setup-Parameter
-- **INI-basierte Konfiguration**: Zentrale `settings.ini` für alle Installationsparameter — versionierbar und wiederverwendbar
-- **Automatische Validierung**: Prüft alle Parameter vor der Installation (Pfade, Ports, Dienst-Konten etc.)
-- **Disk Layout**: Automatische Konfiguration der SQL Server Datenträgerlayouts (64K-Cluster, Laufwerksbuchstaben)
-- **Installationsquellenmanagement**: Kopiert Setup-Medien auf den Zielserver
-- **dbaTools-Integration**: Post-Install Konfiguration über dbaTools (Speichereinstellungen, MaxDOP, TEMPDB etc.)
-- **Post-Install-Skripte**: Standardisierte Nachkonfiguration nach erfolgreicher Installation
+| Rolle | Starter | Beschreibung |
+|-------|---------|--------------|
+| **Anwender** | `Start-Tool.cmd` | Startet das Setup-Hauptfenster |
+| **Admin** | `Start-AdminConfig.cmd` | Pflegt globale Pfade und SQL-Defaults (`Config\settings.ini`) |
+| **Domain-Admin** | `Start-DomainConfig.cmd` | Pflegt domain-spezifische Profile (`Config\domains\*.ini`) |
 
-## Voraussetzungen
+---
 
-| Anforderung | Mindestversion |
-|-------------|---------------|
-| Windows Server | 2022 |
-| SQL Server | 2022 (Enterprise oder Standard) |
-| PowerShell | 5.1 |
+## Anwender
 
-**Module** (werden automatisch geladen):
-- `dbaTools` >= 2.0
+`Start-Tool.cmd` oeffnet das Haupt-Setup-Fenster. Konfigurationsaenderungen sind hier nicht moeglich.
 
-## Verwendung
+Das Tool laedt automatisch das Domain-Profil des aktuellen Computers (NetBIOS-Domainname). Gibt es keinen Match, wird `DEFAULT.ini` verwendet.
 
-```powershell
-# Als lokaler Administrator ausführen
-.\Main.ps1
+---
+
+## Admin-Konfiguration
+
+`Start-AdminConfig.cmd` oeffnet den Admin-Konfigurations-Editor.
+
+### Tab "Pfade"
+
+| Einstellung | Beschreibung |
+|-------------|--------------|
+| `SetupSourceRoot` | Stammverzeichnis der SQL-Installationsquellen |
+| `BackupRoot` | Zielverzeichnis fuer System-DB-Backups |
+| `ScriptsRoot` | Pfad zu Post-Install-Skripten |
+| `Versionen` | Kommagetrennte Liste verfuegbarer SQL-Versionen |
+
+### Tab "Defaults"
+
+| Einstellung | Beschreibung |
+|-------------|--------------|
+| `DefaultVersion` | Vorausgewaehlte SQL Server Version (z.B. `2022`) |
+| `DefaultEdition` | Vorausgewaehlte Edition (Developer / Standard / Enterprise) |
+| `DefaultPort` | TCP-Port (Standard: `1433`) |
+| `BrowserPort` | SQL Browser UDP-Port (Standard: `1434`) |
+| `Format64kCheck` | 64k-Blockgroessen-Check fuer Datenlaufwerke |
+| `PowerBI_Enabled` | Power BI RS als optionale Komponente anbieten |
+| `PowerBI_SourcePath` | Installationsquelle fuer Power BI RS |
+
+---
+
+## Domain-Profil-Konfiguration
+
+`Start-DomainConfig.cmd` oeffnet den Domain-Profil-Editor.
+
+### Profile verwalten
+
+- **Linke Spalte**: Liste aller Profile in `Config\domains\`
+- **+ Neu**: Legt ein neues Profil an - Eingabe ist der NetBIOS-Domainname (z.B. `CONTOSO`)
+- **- Loeschen**: Entfernt ein Profil (DEFAULT ist geschuetzt)
+- **Speichern**: Schreibt das aktuell angezeigte Profil
+
+### Tab "Allgemein"
+
+| Feld | Beschreibung |
+|------|--------------|
+| Anzeigename | Beschreibender Name des Profils |
+| Sortierung | SQL Server Collation (z.B. `Latin1_General_CI_AS`) |
+| Sysadmin-Gruppen | Kommagetrennte AD-Gruppen, die nach Installation die `sysadmin`-Rolle erhalten |
+| Monitoring-Typ | 0-basierter Index in die Monitoring-Typen-Liste aus `settings.ini [Monitoring]` |
+| Ziel-Server BasePath | Pfad fuer ZIP-Export (leer = Export deaktiviert) |
+
+### Tab "Laufwerke"
+
+Laufwerksbuchstaben fuer die SQL Server Datenbereiche:
+
+| Laufwerk | Verwendung |
+|----------|------------|
+| Datenlaufwerk | MDF / NDF User-Datenbanken |
+| Log-Laufwerk | LDF Transaction Logs |
+| TempDB-Laufwerk | TempDB-Dateien |
+| Backup-Laufwerk | Backups + SystemDB-Verzeichnis |
+| Install-Laufwerk | SQL Server Binaerdateien |
+
+---
+
+## Dateistruktur
+
+```
+SQLSetupTool\
+  Start-Tool.cmd              # Anwender
+  Start-AdminConfig.cmd       # Admin
+  Start-DomainConfig.cmd      # Domain-Admin
+  Config\
+    settings.ini              # Globale Konfiguration
+    collations.txt            # Liste verfuegbarer Collations
+    domains\
+      DEFAULT.ini             # Fallback-Profil (immer vorhanden)
+      <DOMAIN>.ini            # Ein Profil pro Active-Directory-Domain
+  GUI\
+    MainForm.ps1              # Haupt-Setup-Formular
+    ConfigForm.ps1            # Admin-Konfigurationsformular
+    DomainConfigForm.ps1      # Domain-Profil-Editor
+  Modules\
+    Config.psm1               # INI-Lese- und Merge-Logik
+    Setup.psm1                # SQL-Server-Installations-Logik
 ```
 
-## Projektstruktur
+---
 
-```
-SQLSetupTool/
-├── Main.ps1                  # Einstiegspunkt: prüft Adminrechte, lädt Module, startet GUI
-├── Config/
-│   ├── settings.ini          # Alle Installationsparameter (Pfade, Konten, Features)
-│   └── collations.txt        # Verfügbare SQL Server Collations
-├── GUI/
-│   └── MainForm.ps1          # WinForms-Hauptfenster
-├── Modules/
-│   ├── Config.psm1           # INI-Parsing, Konfigurationsmanagement
-│   ├── Validation.psm1       # Parameter-Validierung vor Installation
-│   ├── DiskLayout.psm1       # Datenträgerkonfiguration
-│   ├── CopySource.psm1       # Setup-Medien kopieren
-│   ├── Installation.psm1     # SQL Server Setup-Ausführung
-│   ├── PostInstall.psm1      # Post-Install Konfiguration (dbaTools)
-│   └── DbaToolsSetup.psm1    # dbaTools Installation/Update
-├── Scripts/
-│   └── PostInstall.ps1       # Standalone Post-Install Skript
-└── Docs/
-    ├── SQLSetupTool_Installationsablauf.docx
-    └── SQLSetupTool_Konfigurationsreferenz.docx
-```
+## Systemvoraussetzungen
 
-## Version
-
-- **1.0** — April 2025 — Erstveröffentlichung
-
-## Mehr Informationen
-
-- Website: [www.powershelldba.de](https://www.powershelldba.de)
-- Entwickler: Uwe Janke, Senior IT-Spezialist / SQL Server DBA
+- Windows Server 2016 / 2019 / 2022 oder Windows 10/11
+- PowerShell 5.1
+- .NET Framework 4.7.2 oder hoeher
+- SQL Server Installationsmedien (ISO oder entpackt)
