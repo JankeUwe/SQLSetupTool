@@ -21,8 +21,7 @@ Add-Type -AssemblyName System.Drawing
 if (-not ([System.Management.Automation.PSTypeName]'SqlSetupTool.SqlPathConfig').Type) {
     Add-Type -ReferencedAssemblies (
         'System.Windows.Forms',
-        'System.Drawing',
-        'System.ComponentModel.Primitives'
+        'System.Drawing'
     ) -TypeDefinition @'
 using System;
 using System.ComponentModel;
@@ -45,18 +44,25 @@ namespace SqlSetupTool
         public override object EditValue(ITypeDescriptorContext context,
                                          IServiceProvider provider, object value)
         {
-            var svc = provider?.GetService(typeof(IWindowsFormsEditorService))
-                      as IWindowsFormsEditorService;
+            if (provider == null) return value;
+            IWindowsFormsEditorService svc =
+                provider.GetService(typeof(IWindowsFormsEditorService))
+                as IWindowsFormsEditorService;
             if (svc == null) return value;
 
-            using (var dlg = new FolderBrowserDialog())
+            using (FolderBrowserDialog dlg = new FolderBrowserDialog())
             {
                 dlg.Description = "Ordner auswaehlen";
-                string current = value as string ?? string.Empty;
-                if (current != string.Empty)
-                    try { if (System.IO.Directory.Exists(current)) dlg.SelectedPath = current; }
+                string current = value as string;
+                if (current != null && current != "")
+                {
+                    try
+                    {
+                        if (System.IO.Directory.Exists(current))
+                            dlg.SelectedPath = current;
+                    }
                     catch { }
-
+                }
                 if (dlg.ShowDialog() == DialogResult.OK)
                     return dlg.SelectedPath;
             }
@@ -69,20 +75,26 @@ namespace SqlSetupTool
     // -------------------------------------------------------------------------
     public class EditionConverter : StringConverter
     {
-        private static readonly string[] _values = new[]
+        private static readonly string[] _values = new string[]
         {
             "Developer", "Standard", "Enterprise",
             "Developer-Standard", "Developer-Enterprise"
         };
 
         public override bool GetStandardValuesExclusive(ITypeDescriptorContext context)
-            => true;
+        {
+            return true;
+        }
 
         public override bool GetStandardValuesSupported(ITypeDescriptorContext context)
-            => true;
+        {
+            return true;
+        }
 
         public override StandardValuesCollection GetStandardValues(ITypeDescriptorContext context)
-            => new StandardValuesCollection(_values);
+        {
+            return new StandardValuesCollection(_values);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -93,13 +105,19 @@ namespace SqlSetupTool
         public static string[] Values = new string[0];
 
         public override bool GetStandardValuesExclusive(ITypeDescriptorContext context)
-            => false;
+        {
+            return false;
+        }
 
         public override bool GetStandardValuesSupported(ITypeDescriptorContext context)
-            => Values != null && Values.Length > 0;
+        {
+            return Values != null && Values.Length > 0;
+        }
 
         public override StandardValuesCollection GetStandardValues(ITypeDescriptorContext context)
-            => new StandardValuesCollection(Values);
+        {
+            return new StandardValuesCollection(Values);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -110,13 +128,19 @@ namespace SqlSetupTool
         public static string[] Values = new string[0];
 
         public override bool GetStandardValuesExclusive(ITypeDescriptorContext context)
-            => false;
+        {
+            return false;
+        }
 
         public override bool GetStandardValuesSupported(ITypeDescriptorContext context)
-            => Values != null && Values.Length > 0;
+        {
+            return Values != null && Values.Length > 0;
+        }
 
         public override StandardValuesCollection GetStandardValues(ITypeDescriptorContext context)
-            => new StandardValuesCollection(Values);
+        {
+            return new StandardValuesCollection(Values);
+        }
     }
 
     // =========================================================================
@@ -129,25 +153,25 @@ namespace SqlSetupTool
         [DisplayName("SourceShare")]
         [Description("Zentraler Pfad der SQLSources-Freigabe. Alle anderen Pfade liegen typischerweise unterhalb dieses Verzeichnisses.")]
         [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
-        public string SourceShare { get; set; } = string.Empty;
+        public string SourceShare { get; set; }
 
         [Category("1 - Allgemein")]
         [DisplayName("Versionen")]
         [Description("Kommagetrennte Liste der verfuegbaren SQL-Server-Versionen. Beispiel: 2019,2022,2025")]
-        public string Versionen { get; set; } = "2019,2022,2025";
+        public string Versionen { get; set; }
 
         // --- 2 - Module ---
         [Category("2 - Module")]
         [DisplayName("DbaTools_ShareBasePath")]
         [Description("Basisverzeichnis fuer dbaTools auf dem Share. Unterordner dbatools und dbatools.library werden automatisch erwartet.")]
         [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
-        public string DbaTools_ShareBasePath { get; set; } = string.Empty;
+        public string DbaTools_ShareBasePath { get; set; }
 
         [Category("2 - Module")]
         [DisplayName("SqmSQLTool_ShareBasePath")]
         [Description("Basisverzeichnis fuer sqmSQLTool auf dem Share. Unterordner sqmSQLTool mit sqmSQLTool.psd1 wird erwartet.")]
         [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
-        public string SqmSQLTool_ShareBasePath { get; set; } = string.Empty;
+        public string SqmSQLTool_ShareBasePath { get; set; }
 
         // --- 3 - Treiber ---
         [Category("3 - Treiber")]
@@ -159,7 +183,7 @@ namespace SqlSetupTool
         [DisplayName("JDBC_SourcePath")]
         [Description("Quellpfad fuer den JDBC-Installer.")]
         [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
-        public string JDBC_SourcePath { get; set; } = string.Empty;
+        public string JDBC_SourcePath { get; set; }
 
         [Category("3 - Treiber")]
         [DisplayName("ODBC_Enabled")]
@@ -170,7 +194,7 @@ namespace SqlSetupTool
         [DisplayName("ODBC_SourcePath")]
         [Description("Quellpfad fuer den ODBC-Installer.")]
         [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
-        public string ODBC_SourcePath { get; set; } = string.Empty;
+        public string ODBC_SourcePath { get; set; }
 
         [Category("3 - Treiber")]
         [DisplayName("OLEDB_Enabled")]
@@ -181,7 +205,7 @@ namespace SqlSetupTool
         [DisplayName("OLEDB_SourcePath")]
         [Description("Quellpfad fuer den OLEDB-Installer.")]
         [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
-        public string OLEDB_SourcePath { get; set; } = string.Empty;
+        public string OLEDB_SourcePath { get; set; }
 
         [Category("3 - Treiber")]
         [DisplayName("DB2_Enabled")]
@@ -192,7 +216,7 @@ namespace SqlSetupTool
         [DisplayName("DB2_SourcePath")]
         [Description("Quellpfad fuer den IBM DB2-Treiber-Installer.")]
         [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
-        public string DB2_SourcePath { get; set; } = string.Empty;
+        public string DB2_SourcePath { get; set; }
 
         // --- 4 - Opt. Komponenten ---
         [Category("4 - Opt. Komponenten")]
@@ -204,7 +228,7 @@ namespace SqlSetupTool
         [DisplayName("SSRS_SourcePath")]
         [Description("Quellpfad fuer SSRS-Installer - pro Version ein eigener Unterordner: <SourceShare>\\SQL2019\\Reporting, \\SQL2022\\Reporting etc.")]
         [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
-        public string SSRS_SourcePath { get; set; } = string.Empty;
+        public string SSRS_SourcePath { get; set; }
 
         [Category("4 - Opt. Komponenten")]
         [DisplayName("SSAS_Enabled")]
@@ -230,7 +254,7 @@ namespace SqlSetupTool
         [DisplayName("TDP_SourcePath")]
         [Description("Quellpfad fuer den TDP-Installer.")]
         [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
-        public string TDP_SourcePath { get; set; } = string.Empty;
+        public string TDP_SourcePath { get; set; }
 
         [Category("4 - Opt. Komponenten")]
         [DisplayName("PowerBI_Enabled")]
@@ -241,20 +265,20 @@ namespace SqlSetupTool
         [DisplayName("PowerBI_SourcePath")]
         [Description("Quellpfad fuer den Power BI Report Server Installer.")]
         [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
-        public string PowerBI_SourcePath { get; set; } = string.Empty;
+        public string PowerBI_SourcePath { get; set; }
 
         // --- 5 - Wartung ---
         [Category("5 - Wartung")]
         [DisplayName("Ola_SourcePath")]
         [Description("Lokaler Pfad fuer Ola Hallengren Maintenance Solution. Leer = GitHub-Download.")]
         [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
-        public string Ola_SourcePath { get; set; } = string.Empty;
+        public string Ola_SourcePath { get; set; }
 
         [Category("5 - Wartung")]
         [DisplayName("SqlScripts_Path")]
         [Description("Pfad zu Firmen-SQL-Skripten die nach der Installation ausgefuehrt werden. Alle *.sql-Dateien werden alphabetisch ausgefuehrt.")]
         [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
-        public string SqlScripts_Path { get; set; } = string.Empty;
+        public string SqlScripts_Path { get; set; }
 
         [Category("5 - Wartung")]
         [DisplayName("Secpol_Enabled")]
@@ -265,7 +289,25 @@ namespace SqlSetupTool
         [DisplayName("Secpol_SourcePath")]
         [Description("Ordner mit secedt.sdb und/oder import.inf fuer Secpol-Haertung.")]
         [Editor(typeof(FolderPathEditor), typeof(UITypeEditor))]
-        public string Secpol_SourcePath { get; set; } = string.Empty;
+        public string Secpol_SourcePath { get; set; }
+
+        public SqlPathConfig()
+        {
+            SourceShare            = "";
+            Versionen              = "2019,2022,2025";
+            DbaTools_ShareBasePath = "";
+            SqmSQLTool_ShareBasePath = "";
+            JDBC_SourcePath        = "";
+            ODBC_SourcePath        = "";
+            OLEDB_SourcePath       = "";
+            DB2_SourcePath         = "";
+            SSRS_SourcePath        = "";
+            TDP_SourcePath         = "";
+            PowerBI_SourcePath     = "";
+            Ola_SourcePath         = "";
+            SqlScripts_Path        = "";
+            Secpol_SourcePath      = "";
+        }
     }
 
     // =========================================================================
@@ -278,51 +320,64 @@ namespace SqlSetupTool
         [DisplayName("DefaultVersion")]
         [Description("Standard-SQL-Server-Version fuer neue Installationen. Muss in der Versionsliste (Tab 1) enthalten sein.")]
         [TypeConverter(typeof(VersionConverter))]
-        public string DefaultVersion { get; set; } = "2022";
+        public string DefaultVersion { get; set; }
 
         [Category("1 - Vorgaben")]
         [DisplayName("DefaultEdition")]
         [Description("Vorgabe-Edition fuer neue SQL-Server-Installationen. Developer = kostenlos, kein Produktiveinsatz.")]
         [TypeConverter(typeof(EditionConverter))]
-        public string DefaultEdition { get; set; } = "Developer";
+        public string DefaultEdition { get; set; }
 
         [Category("1 - Vorgaben")]
         [DisplayName("DefaultInstanceName")]
         [Description("Standard-Instanzname. MSSQLServer = Default-Instanz (kein Instanznamen-Suffix).")]
-        public string DefaultInstanceName { get; set; } = "MSSQLServer";
+        public string DefaultInstanceName { get; set; }
 
         [Category("1 - Vorgaben")]
         [DisplayName("DefaultCollation")]
         [Description("Standard-Sortierung (Collation) fuer neue SQL-Server-Instanzen.")]
         [TypeConverter(typeof(CollationConverter))]
-        public string DefaultCollation { get; set; } = "Latin1_General_CI_AS";
+        public string DefaultCollation { get; set; }
 
         // --- 2 - TCP-Ports ---
         [Category("2 - TCP-Ports")]
         [DisplayName("BasePort")]
         [Description("TCP-Port fuer die Default-Instanz (MSSQLSERVER). Standard: 1433.")]
-        public int BasePort { get; set; } = 1433;
+        public int BasePort { get; set; }
 
         [Category("2 - TCP-Ports")]
         [DisplayName("BrowserPort")]
         [Description("UDP-Port fuer den SQL Browser Service. Standard: 1434.")]
-        public int BrowserPort { get; set; } = 1434;
+        public int BrowserPort { get; set; }
 
         [Category("2 - TCP-Ports")]
         [DisplayName("PortIncrement")]
         [Description("Portabstand fuer Named Instances. Named Instance N bekommt Port: BasePort + (N * Increment).")]
-        public int PortIncrement { get; set; } = 10;
+        public int PortIncrement { get; set; }
 
         // --- 3 - Pre-Install ---
         [Category("3 - Pre-Install")]
         [DisplayName("Format64kCheck")]
         [Description("NTFS-Allokationseinheit aller konfigurierten Laufwerke vor der Installation pruefen. Bei Abweichung: Dialog mit OK/Abbrechen.")]
-        public bool Format64kCheck { get; set; } = true;
+        public bool Format64kCheck { get; set; }
 
         [Category("3 - Pre-Install")]
         [DisplayName("SnapshotEnabled")]
         [Description("Hinweis-Dialog anzeigen: Snapshot vor Installation empfohlen.")]
         public bool SnapshotEnabled { get; set; }
+
+        public SqlDefaultsConfig()
+        {
+            DefaultVersion      = "2022";
+            DefaultEdition      = "Developer";
+            DefaultInstanceName = "MSSQLServer";
+            DefaultCollation    = "Latin1_General_CI_AS";
+            BasePort            = 1433;
+            BrowserPort         = 1434;
+            PortIncrement       = 10;
+            Format64kCheck      = true;
+            SnapshotEnabled     = false;
+        }
     }
 }
 '@
