@@ -136,15 +136,15 @@ function Show-DomainConfigForm {
     # ---------------------------------------------------------------------------
     $form = New-Object System.Windows.Forms.Form
     $form.Text            = 'Domain-Konfiguration'
-    $form.Size            = New-Object System.Drawing.Size(820, 560)
-    $form.MinimumSize     = New-Object System.Drawing.Size(820, 520)
-    $form.StartPosition   = 'CenterParent'
+    $form.Size            = New-Object System.Drawing.Size(820, 620)
+    $form.MinimumSize     = New-Object System.Drawing.Size(820, 580)
+    $form.StartPosition   = 'CenterScreen'
     $form.FormBorderStyle = 'Sizable'
 
     # ---- Linke Spalte: Domain-Liste ----
     $pnlLeft          = New-Object System.Windows.Forms.Panel
     $pnlLeft.Location = New-Object System.Drawing.Point(10, 10)
-    $pnlLeft.Size     = New-Object System.Drawing.Size(160, 490)
+    $pnlLeft.Size     = New-Object System.Drawing.Size(160, 540)
     $pnlLeft.Anchor   = 'Top,Bottom,Left'
     $form.Controls.Add($pnlLeft)
 
@@ -156,21 +156,21 @@ function Show-DomainConfigForm {
 
     $lbDomains               = New-Object System.Windows.Forms.ListBox
     $lbDomains.Location      = New-Object System.Drawing.Point(0, 24)
-    $lbDomains.Size          = New-Object System.Drawing.Size(160, 380)
+    $lbDomains.Size          = New-Object System.Drawing.Size(160, 430)
     $lbDomains.Anchor        = 'Top,Bottom,Left'
     $lbDomains.SelectionMode = 'One'
     $pnlLeft.Controls.Add($lbDomains)
 
     $btnNew          = New-Object System.Windows.Forms.Button
     $btnNew.Text     = '+ Neu'
-    $btnNew.Location = New-Object System.Drawing.Point(0, 410)
+    $btnNew.Location = New-Object System.Drawing.Point(0, 462)
     $btnNew.Size     = New-Object System.Drawing.Size(75, 26)
     $btnNew.Anchor   = 'Bottom,Left'
     $pnlLeft.Controls.Add($btnNew)
 
     $btnDel          = New-Object System.Windows.Forms.Button
     $btnDel.Text     = '- Loeschen'
-    $btnDel.Location = New-Object System.Drawing.Point(82, 410)
+    $btnDel.Location = New-Object System.Drawing.Point(82, 462)
     $btnDel.Size     = New-Object System.Drawing.Size(78, 26)
     $btnDel.Anchor   = 'Bottom,Left'
     $pnlLeft.Controls.Add($btnDel)
@@ -178,7 +178,7 @@ function Show-DomainConfigForm {
     # ---- Trennlinie ----
     $sep          = New-Object System.Windows.Forms.Panel
     $sep.Location = New-Object System.Drawing.Point(178, 10)
-    $sep.Size     = New-Object System.Drawing.Size(2, 490)
+    $sep.Size     = New-Object System.Drawing.Size(2, 540)
     $sep.Anchor   = 'Top,Bottom,Left'
     $sep.BorderStyle = 'Fixed3D'
     $form.Controls.Add($sep)
@@ -186,7 +186,7 @@ function Show-DomainConfigForm {
     # ---- Rechte Seite: Tabs ----
     $tabs          = New-Object System.Windows.Forms.TabControl
     $tabs.Location = New-Object System.Drawing.Point(188, 10)
-    $tabs.Size     = New-Object System.Drawing.Size(610, 490)
+    $tabs.Size     = New-Object System.Drawing.Size(610, 540)
     $tabs.Anchor   = 'Top,Bottom,Left,Right'
     $form.Controls.Add($tabs)
 
@@ -315,7 +315,7 @@ function Show-DomainConfigForm {
     # =========================================================================
     $btnSave          = New-Object System.Windows.Forms.Button
     $btnSave.Text     = 'Speichern'
-    $btnSave.Location = New-Object System.Drawing.Point(630, 508)
+    $btnSave.Location = New-Object System.Drawing.Point(630, 558)
     $btnSave.Size     = New-Object System.Drawing.Size(90, 28)
     $btnSave.Anchor   = 'Bottom,Right'
     $btnSave.Enabled  = $false
@@ -323,7 +323,7 @@ function Show-DomainConfigForm {
 
     $btnClose          = New-Object System.Windows.Forms.Button
     $btnClose.Text     = 'Schliessen'
-    $btnClose.Location = New-Object System.Drawing.Point(725, 508)
+    $btnClose.Location = New-Object System.Drawing.Point(725, 558)
     $btnClose.Size     = New-Object System.Drawing.Size(85, 28)
     $btnClose.Anchor   = 'Bottom,Right'
     $form.Controls.Add($btnClose)
