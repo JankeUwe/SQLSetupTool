@@ -17,6 +17,10 @@
            -> Bei OK: Invoke-sqmFormatDrive64k fuer betroffene Laufwerke
         3. Snapshot-Hinweis wenn Config.SnapshotEnabled = $true
            -> Informations-Dialog, kein automatischer Checkpoint
+        4. HPU AD-Gruppenmitgliedschaft wenn Config.HpuCheck = $true
+           -> Get-sqmHpuAllowGroup ermittelt Gruppe per Domain-Mapping
+           -> Prueft ob Computerkonto Mitglied ist (ADSI, kein AD-Modul)
+           -> Bei Nicht-Mitgliedschaft: Installation wird blockiert
 #>
 
 Set-StrictMode -Version Latest
@@ -203,6 +207,93 @@ function Invoke-PreInstallChecks {
             return $false
         }
         log '  OK: Snapshot bestaetigt. Installation wird fortgesetzt.'
+    }
+
+    # =========================================================================
+    # CHECK 4: HPU AD-Gruppenmitgliedschaft (nur wenn HpuCheck = true)
+    # =========================================================================
+    if ($Config.HpuCheck) {
+        log 'PreInstall: Pruefe HPU AD-Gruppenmitgliedschaft...'
+        try {
+            $hpuGroupDN = Get-sqmHpuAllowGroup -ErrorAction Stop
+
+            if (-not $hpuGroupDN) {
+                log '  FEHLER: HPU-Allow-Gruppe nicht gefunden (kein Domain-Mapping konfiguriert?).'
+                [System.Windows.Forms.MessageBox]::Show(
+                    "HPU-Check fehlgeschlagen!`n`n" +
+                    "Fuer die Domain '$($Config.Domain)' ist keine HPU-Allow-Gruppe konfiguriert.`n`n" +
+                    "Bitte HpuDomainGroupMap in sqmSQLTool konfigurieren oder`n" +
+                    "HpuCheck in settings.ini auf false setzen.`n`n" +
+                    "Installation wird abgebrochen.",
+                    'HPU-Check — Konfigurationsfehler',
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Error
+                ) | Out-Null
+                return $false
+            }
+
+            log "  HPU-Gruppe gefunden: $hpuGroupDN"
+            log "  Pruefe Mitgliedschaft von '$env:COMPUTERNAME'..."
+
+            # Computerkonto-DN via ADSI ermitteln (kein AD-Modul erforderlich)
+            $computerSearcher = [adsisearcher]"(samaccountname=$($env:COMPUTERNAME)`$)"
+            $computerSearcher.PropertiesToLoad.Add('distinguishedname') | Out-Null
+            $computerResult = $computerSearcher.FindOne()
+
+            if (-not $computerResult) {
+                log "  WARN: Computerkonto '$env:COMPUTERNAME' nicht im AD gefunden — Pruefung nicht moeglich."
+                [System.Windows.Forms.MessageBox]::Show(
+                    "HPU-Check: Computerkonto '$env:COMPUTERNAME' wurde im Active Directory nicht gefunden.`n`n" +
+                    "Moegliche Ursache: Kein Domainbeitritt oder fehlende AD-Verbindung.`n`n" +
+                    "Installation wird abgebrochen.",
+                    'HPU-Check — Computerkonto nicht gefunden',
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Error
+                ) | Out-Null
+                return $false
+            }
+
+            $computerDN = $computerResult.Properties['distinguishedname'][0]
+            log "  Computerkonto-DN: $computerDN"
+
+            # Gruppenmitgliedschaft via ADSI pruefen (rekursive Member-Liste)
+            $group   = [ADSI]"LDAP://$hpuGroupDN"
+            $members = $group.psbase.Invoke('Members') |
+                       ForEach-Object { ([ADSI]$_).distinguishedName }
+
+            $isMember = $members -contains $computerDN
+
+            if (-not $isMember) {
+                log "  FEHLER: '$env:COMPUTERNAME' ist NICHT Mitglied der HPU-Gruppe."
+                log "          Gruppe : $hpuGroupDN"
+                [System.Windows.Forms.MessageBox]::Show(
+                    "HPU-Check fehlgeschlagen!`n`n" +
+                    "Der Computer '$env:COMPUTERNAME' ist nicht Mitglied der HPU-Allow-Gruppe:`n" +
+                    "$hpuGroupDN`n`n" +
+                    "Bitte den Server zuerst in die HPU-Gruppe aufnehmen und danach erneut starten.`n`n" +
+                    "Installation wird abgebrochen.",
+                    'HPU-Check — Keine Mitgliedschaft',
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Stop
+                ) | Out-Null
+                return $false
+            }
+
+            log "  OK: '$env:COMPUTERNAME' ist Mitglied der HPU-Gruppe."
+        }
+        catch {
+            log "  FEHLER HPU-Check: $_"
+            [System.Windows.Forms.MessageBox]::Show(
+                "HPU-Check fehlgeschlagen!`n`nFehler: $_`n`nInstallation wird abgebrochen.",
+                'HPU-Check — Fehler',
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+            return $false
+        }
+    }
+    else {
+        log 'PreInstall: HPU-Check deaktiviert (settings.ini [PreInstall] HpuCheck = false).'
     }
 
     log '--- PreInstall-Pruefungen abgeschlossen. ---'

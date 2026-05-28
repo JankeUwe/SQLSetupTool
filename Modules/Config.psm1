@@ -553,6 +553,7 @@ function Get-SetupConfig {
     $preSection         = if ($ini.Contains('PreInstall')) { $ini['PreInstall'] } else { @{} }
     $cfgFormat64kCheck  = ($preSection['Format64kCheck']  -eq 'true')
     $cfgSnapshotEnabled = ($preSection['SnapshotEnabled'] -eq 'true')
+    $cfgHpuCheck        = ($preSection['HpuCheck']        -eq 'true')
 
     # PS 5.1-kompatible Fallback-Werte
     $cfgVersion      = if ($general['DefaultVersion'])      { $general['DefaultVersion'] }      else { '2022' }
@@ -619,6 +620,7 @@ function Get-SetupConfig {
         # PreInstall-Pruefungen (aus [PreInstall])
         Format64kCheck      = $cfgFormat64kCheck
         SnapshotEnabled     = $cfgSnapshotEnabled
+        HpuCheck            = $cfgHpuCheck
 
         # PostInstall-Skript (wird in Main.ps1 in absoluten Pfad aufgeloest)
         PostInstallScript   = 'Scripts\PostInstall.ps1'

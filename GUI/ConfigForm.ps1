@@ -366,6 +366,11 @@ namespace SqlSetupTool
         [Description("Hinweis-Dialog anzeigen: Snapshot vor Installation empfohlen.")]
         public bool SnapshotEnabled { get; set; }
 
+        [Category("3 - Pre-Install")]
+        [DisplayName("HpuCheck")]
+        [Description("AD-Gruppenmitgliedschaft fuer HPU (HP Update) pruefen. Bei Nicht-Mitgliedschaft wird die Installation blockiert. Nur in FI-TS-Umgebungen aktivieren.")]
+        public bool HpuCheck { get; set; }
+
         public SqlDefaultsConfig()
         {
             DefaultVersion      = "2022";
@@ -377,6 +382,7 @@ namespace SqlSetupTool
             PortIncrement       = 10;
             Format64kCheck      = true;
             SnapshotEnabled     = false;
+            HpuCheck            = false;
         }
     }
 }
@@ -753,6 +759,7 @@ function Show-ConfigForm {
     $defaultsConfig.PortIncrement      = [int](_IniVal 'Ports' 'PortIncrement' '10')
     $defaultsConfig.Format64kCheck     = ((_IniVal 'PreInstall' 'Format64kCheck' 'true') -ne 'false')
     $defaultsConfig.SnapshotEnabled    = ((_IniVal 'PreInstall' 'SnapshotEnabled') -eq 'true')
+    $defaultsConfig.HpuCheck           = ((_IniVal 'PreInstall' 'HpuCheck') -eq 'true')
 
     $propGrid3                = New-Object System.Windows.Forms.PropertyGrid
     $propGrid3.Dock           = 'Fill'
@@ -960,6 +967,7 @@ function Show-ConfigForm {
 
             _UpdateIni -IniPath $IniPath -Section 'PreInstall' -Key 'Format64kCheck'  -Value $defaultsConfig.Format64kCheck.ToString().ToLower()
             _UpdateIni -IniPath $IniPath -Section 'PreInstall' -Key 'SnapshotEnabled' -Value $defaultsConfig.SnapshotEnabled.ToString().ToLower()
+            _UpdateIni -IniPath $IniPath -Section 'PreInstall' -Key 'HpuCheck'        -Value $defaultsConfig.HpuCheck.ToString().ToLower()
 
             $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
             $form.Close()
