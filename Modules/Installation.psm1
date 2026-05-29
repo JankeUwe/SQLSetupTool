@@ -117,35 +117,61 @@ function Invoke-SqlInstallation {
 function Install-SsrsComponent {
     <#
     .SYNOPSIS
-        Installiert SQL Server Reporting Services (eigenstaendiger Installer).
+        Installiert und konfiguriert SQL Server Reporting Services.
         Delegiert an Install-sqmSsrsReportServer aus sqmSQLTool.
     .PARAMETER SourcePath
-        Verzeichnis das SQLServerReportingServices.exe enthaelt.
+        Verzeichnis das SQLServerReportingServices*.exe enthaelt.
+        Wildcard: SQLServerReportingServices_2022.exe u.ae. werden erkannt.
         Konvention: $InstallDrive:\SQLSources\SQL$Version\Reporting
     .PARAMETER InstanceName
-        Wird von der GUI uebergeben - nicht benoetigt (spaeterer Konfigurationsschritt).
+        SQL-Server-Instanzname (MSSQLSERVER fuer Default-Instanz).
+        Wird als DatabaseServer und InstanceName an Set-sqmSsrsConfiguration uebergeben.
+    .PARAMETER Edition
+        SSRS-Lizenzedition: Eval, Developer, Standard, Enterprise.
+        Standard/Enterprise erfordern einen ProductKey.
+    .PARAMETER ProductKey
+        Lizenzschluessel (25 Zeichen). Ersetzt -Edition wenn angegeben.
+        Muss zur installierten SQL-Server-Edition passen.
     .PARAMETER LogCallback
         Optionaler ScriptBlock fuer GUI-Logging.
     #>
     param(
         [Parameter(Mandatory)][string]$SourcePath,
-        [string]$InstanceName,
+        [string]$InstanceName  = 'MSSQLSERVER',
+        [string]$Edition       = 'Developer',
+        [string]$ProductKey    = '',
         [ScriptBlock]$LogCallback
     )
 
-    $installer = Get-ChildItem -Path $SourcePath -Filter 'SQLServerReportingServices.exe' |
+    # Wildcard-Suche: findet SQLServerReportingServices.exe UND SQLServerReportingServices_2022.exe usw.
+    $installer = Get-ChildItem -Path $SourcePath -Filter 'SQLServerReportingServices*.exe' |
+                 Sort-Object Name -Descending |
                  Select-Object -First 1
 
     if (-not $installer) {
-        throw "SSRS-Installer nicht gefunden unter: $SourcePath"
+        throw "SSRS-Installer nicht gefunden unter: $SourcePath (erwartet: SQLServerReportingServices*.exe)"
     }
 
     if ($LogCallback) { & $LogCallback "Installiere SSRS: $($installer.FullName)" }
+    if ($LogCallback) { & $LogCallback "  Edition: $(if ($ProductKey) { 'Key gesetzt' } else { $Edition })  Instanz: $InstanceName" }
 
-    # Delegation an sqmSQLTool
-    Install-sqmSsrsReportServer -InstallerPath $installer.FullName
+    # Parameter fuer Install-sqmSsrsReportServer aufbauen
+    $ssrsParams = @{
+        InstallerPath  = $installer.FullName
+        InstanceName   = $InstanceName
+        DatabaseServer = $env:COMPUTERNAME
+    }
 
-    if ($LogCallback) { & $LogCallback "SSRS erfolgreich installiert." }
+    if ($ProductKey -and $ProductKey -ne '') {
+        $ssrsParams['ProductKey'] = $ProductKey
+    } else {
+        $ssrsParams['Edition'] = $Edition
+    }
+
+    # Installation + Konfiguration in einem Schritt (Install-sqmSsrsReportServer ruft Set-sqmSsrsConfiguration intern auf)
+    Install-sqmSsrsReportServer @ssrsParams
+
+    if ($LogCallback) { & $LogCallback "SSRS erfolgreich installiert und konfiguriert." }
 }
 
 function Install-SsasComponent {

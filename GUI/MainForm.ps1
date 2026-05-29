@@ -1079,10 +1079,18 @@ $($worker.ToString())
                     }
                     if ($snapChkSSRS) {
                         Write-Log "Installiere SSRS..."
-                        Install-SsrsComponent `
-                            -SourcePath  "$($snapLayout['InstallDrive']):\SQLSources\SQL$snapVer\Reporting" `
-                            -InstanceName $snapInstance `
-                            -LogCallback  $logSB
+                        # SSRS-Edition und ProductKey aus der gleichen Seriennummern-Logik wie SQL-Engine
+                        $ssrsEdition = if ($snapEdition) { $snapEdition } else { 'Developer' }
+                        $ssrsSplat = @{
+                            SourcePath   = "$($snapLayout['InstallDrive']):\SQLSources\SQL$snapVer\Reporting"
+                            InstanceName = $snapInstance
+                            Edition      = $ssrsEdition
+                            LogCallback  = $logSB
+                        }
+                        if ($snapSerial -and $snapSerial -ne '') {
+                            $ssrsSplat['ProductKey'] = $snapSerial
+                        }
+                        Install-SsrsComponent @ssrsSplat
                     }
                     if ($snapChkTDP) {
                         Write-Log "Installiere TDP..."
