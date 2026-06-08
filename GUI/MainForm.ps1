@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     GUI/MainForm.ps1
@@ -1129,8 +1129,10 @@ $($worker.ToString())
                                        -MonitoringType    $snapMonitoring `
                                        -EnableTsm         $snapChkTDP `
                                        -InstallConfig     $snapConfig.InstallationConfig `
-                                       -SplunkEnabled     $snapConfig.SplunkEnabled `
-                                       -SysadminGroups    $snapConfig.SysadminGroups `
+                                       -SplunkEnabled        $snapConfig.SplunkEnabled `
+                                       -QualysEnabled        $snapConfig.QualysEnabled `
+                                       -QualysMonitoringUser $snapConfig.QualysMonitoringUser `
+                                       -SysadminGroups       $snapConfig.SysadminGroups `
                                        -OlaSourcePath     $snapConfig.OlaSourcePath `
                                        -SqlScriptsPath    $snapConfig.SqlScriptsPath `
                                        -PostInstallScript $snapConfig.PostInstallScript `

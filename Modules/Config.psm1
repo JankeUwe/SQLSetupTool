@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Config.psm1 - INI-Parser, Domaenenerkennung, Konfigurationsobjekt
@@ -549,6 +549,18 @@ function Get-SetupConfig {
     $cfgBrowserPort = if ($portsSection['BrowserPort']   -and $portsSection['BrowserPort']    -match '^\d+$') { [int]$portsSection['BrowserPort'] }     else { 1434 }
     $cfgPortIncrement = if ($portsSection['PortIncrement'] -and $portsSection['PortIncrement'] -match '^\d+$') { [int]$portsSection['PortIncrement'] }  else { 10 }
 
+    # -- [Qualys] ------------------------------------------------------------
+    $qualysEnabled        = $false
+    $qualysMonitoringUser = ''
+    if ($ini.Contains('Qualys')) {
+        if ($ini['Qualys'].Contains('Enabled')) {
+            $qualysEnabled = ($ini['Qualys']['Enabled'].Trim() -eq 'true')
+        }
+        if ($ini['Qualys'].Contains('MonitoringUser')) {
+            $qualysMonitoringUser = $ini['Qualys']['MonitoringUser'].Trim()
+        }
+    }
+
     # -- [PreInstall] --------------------------------------------------------
     $preSection         = if ($ini.Contains('PreInstall')) { $ini['PreInstall'] } else { @{} }
     $cfgFormat64kCheck  = ($preSection['Format64kCheck']  -eq 'true')
@@ -595,8 +607,10 @@ function Get-SetupConfig {
         InstallationConfig  = $instConfig
 
         # PostInstall-Optionen
-        SplunkEnabled       = $splunkEnabled
-        SqlScriptsPath      = $sqlScriptsPath
+        SplunkEnabled         = $splunkEnabled
+        SqlScriptsPath        = $sqlScriptsPath
+        QualysEnabled         = $qualysEnabled
+        QualysMonitoringUser  = $qualysMonitoringUser
 
         # Sysadmin-Gruppen (domänenspezifisch, fuer PostInstall)
         SysadminGroups      = $sysadminGroups

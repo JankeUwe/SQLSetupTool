@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     PostInstall.psm1 - Nachkonfiguration nach erfolgreicher SQL-Installation
@@ -37,6 +37,11 @@ function Invoke-PostInstall {
     .PARAMETER SplunkEnabled
         Invoke-sqmSplunkConfiguration nach der Installation ausfuehren? (aus settings.ini [PostInstall]).
         Standard: $false.
+    .PARAMETER QualysEnabled
+        Enable-sqmMonitoringAccess nach der Installation ausfuehren? (aus settings.ini [Qualys]).
+        Standard: $false.
+    .PARAMETER QualysMonitoringUser
+        Windows-Login des Qualys-Accounts. Leer = Wert aus sqmSQLTool DefaultMonitoringUser.
     .PARAMETER SqlScriptsPath
         Ordner mit Firmen-SQL-Skripten (*.sql). Alle Dateien werden alphabetisch ausgefuehrt.
         Leer oder Pfad nicht vorhanden = Schritt wird uebersprungen.
@@ -60,6 +65,8 @@ function Invoke-PostInstall {
         [bool]$EnableTsm = $false,
         [PSCustomObject]$InstallConfig,
         [bool]$SplunkEnabled = $false,
+        [bool]$QualysEnabled = $false,
+        [string]$QualysMonitoringUser = '',
         [string[]]$SysadminGroups = @(),
         [string]$OlaSourcePath = '',
         [string]$SqlScriptsPath = '',
@@ -214,6 +221,28 @@ function Invoke-PostInstall {
 
         $tsmStatus = if ($EnableTsm) { 'Aktiv' } else { 'Inaktiv' }
         log "  OK: Monitoring SQL=$monStr TSM=$tsmStatus"
+
+        # ===== 10a. Qualys Monitoring-Zugang =====
+        if ($QualysEnabled) {
+            log "PostInstall: Richte Qualys Monitoring-Zugang ein..."
+            try {
+                $qualysParams = @{
+                    ComputerName    = $ComputerName
+                    ContinueOnError = $true
+                }
+                if ($QualysMonitoringUser -and $QualysMonitoringUser -ne '') {
+                    $qualysParams['MonitoringUser'] = $QualysMonitoringUser
+                }
+                Enable-sqmMonitoringAccess @qualysParams -ErrorAction Stop
+                log "  OK: Qualys Monitoring-Zugang eingerichtet."
+            }
+            catch {
+                log "  WARN: Qualys Monitoring-Zugang fehlgeschlagen: $_"
+            }
+        }
+        else {
+            log "PostInstall: Qualys-Schritt deaktiviert (settings.ini [Qualys] Enabled = false)."
+        }
 
         # ===== 10. Instanz-Validierung =====
         log "PostInstall: Validiere Installation..."
