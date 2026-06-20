@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Drivers.psm1 - Wrapper fuer JDBC / ODBC / DB2 Treiber-Installation mit Versionsvergleich

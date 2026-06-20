@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Legt die zentrale SQLSources-Verzeichnisstruktur fuer das SQL Server Setup Tool an.

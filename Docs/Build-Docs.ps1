@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Erstellt beide Word-Dokumente (.docx) ohne Word-Installation.

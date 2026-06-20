@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Installation.psm1 - SQL Server Installation, SSRS, SSAS, SSMS, TDP
