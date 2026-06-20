@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     PreInstall.psm1 - Vorab-Pruefungen vor der SQL Server-Installation

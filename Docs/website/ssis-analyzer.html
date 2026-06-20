@@ -1,0 +1,676 @@
+<style>
+.psdb-sa { font-family: 'Segoe UI', system-ui, sans-serif; background: #060f20; color: #e2e8f0; }
+.psdb-sa {
+  --psdb-sa-blue: #5dade2;
+  --psdb-sa-accent: #2e86c1;
+  --psdb-sa-bg: #060f20;
+  --psdb-sa-surface: rgba(255,255,255,0.04);
+  --psdb-sa-border: rgba(46,134,193,0.25);
+  --psdb-sa-text: #e2e8f0;
+  --psdb-sa-muted: #94a8c0;
+  --psdb-sa-code-bg: #012456;
+  --psdb-sa-code-text: #e8e8e8;
+  --psdb-sa-r: 6px;
+  --psdb-sa-shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── HERO ── */
+.psdb-sa-hero {
+  background: linear-gradient(160deg, #060f20 0%, #0b1e3d 100%);
+  padding: 48px 32px;
+  border-radius: var(--psdb-sa-r);
+  margin-bottom: 32px;
+  border-left: 4px solid var(--psdb-sa-blue);
+}
+.psdb-sa-hero h1 {
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: #fff;
+  margin-bottom: 8px;
+  letter-spacing: -.5px;
+}
+.psdb-sa-hero p {
+  font-size: .95rem;
+  color: #94a8c0;
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+.psdb-sa-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.psdb-sa-pill {
+  background: rgba(93,173,226,0.15);
+  border: 1px solid rgba(93,173,226,0.3);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: .78rem;
+  color: var(--psdb-sa-blue);
+  font-weight: 600;
+}
+
+/* ── SECTION ── */
+.psdb-sa-section {
+  margin-bottom: 32px;
+  background: var(--psdb-sa-surface);
+  border: 1px solid var(--psdb-sa-border);
+  border-radius: var(--psdb-sa-r);
+  padding: 20px;
+}
+.psdb-sa-section h2 {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--psdb-sa-blue);
+  margin-bottom: 16px;
+  border-bottom: 2px solid var(--psdb-sa-accent);
+  padding-bottom: 8px;
+}
+.psdb-sa-section h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--psdb-sa-blue);
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+.psdb-sa-section p {
+  line-height: 1.7;
+  margin-bottom: 10px;
+  color: #e2e8f0;
+}
+.psdb-sa-section ul, .psdb-sa-section ol {
+  margin-left: 24px;
+  margin-bottom: 12px;
+}
+.psdb-sa-section li {
+  margin-bottom: 6px;
+  line-height: 1.6;
+  color: #e2e8f0;
+}
+
+/* ── TABLES ── */
+.psdb-sa-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .9rem;
+  margin: 16px 0;
+}
+.psdb-sa-table th {
+  background: var(--psdb-sa-accent);
+  color: #fff;
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+  font-size: .8rem;
+}
+.psdb-sa-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--psdb-sa-border);
+  background: rgba(11,30,61,0.8);
+  color: #e2e8f0;
+}
+.psdb-sa-table tr:hover td {
+  background: rgba(46,134,193,0.25);
+}
+
+/* ── CODE BLOCKS ── */
+.psdb-sa-code {
+  background: var(--psdb-sa-code-bg);
+  color: var(--psdb-sa-code-text);
+  padding: 12px 14px;
+  border-radius: var(--psdb-sa-r);
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: .82rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  margin: 12px 0;
+  white-space: pre;
+  display: block;
+  border-left: 4px solid var(--psdb-sa-blue);
+}
+.psdb-sa-inline-code {
+  background: var(--psdb-sa-code-bg);
+  color: var(--psdb-sa-blue);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Consolas', monospace;
+  font-size: .85rem;
+}
+
+/* ── FEATURE BOX ── */
+.psdb-sa-feature-box {
+  background: rgba(93,173,226,0.08);
+  border-left: 4px solid var(--psdb-sa-blue);
+  padding: 12px 14px;
+  margin: 12px 0;
+  border-radius: var(--psdb-sa-r);
+}
+.psdb-sa-feature-box strong {
+  color: var(--psdb-sa-blue);
+}
+
+/* ── HIGHLIGHTS ── */
+.psdb-sa-highlight {
+  background: rgba(93,173,226,0.12);
+  padding: 2px 5px;
+  border-radius: 3px;
+  color: var(--psdb-sa-blue);
+  font-weight: 600;
+}
+
+/* ── CTA ── */
+.psdb-sa-cta {
+  background: var(--psdb-sa-accent);
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: var(--psdb-sa-r);
+  text-decoration: none;
+  font-weight: 600;
+  display: inline-block;
+  margin-top: 12px;
+  transition: opacity .2s;
+}
+.psdb-sa-cta:hover {
+  opacity: .85;
+}
+
+/* ── UI MOCKUP ── */
+.psdb-sa-ui {
+  margin: 16px 0 4px;
+  border: 1px solid var(--psdb-sa-border);
+  border-radius: var(--psdb-sa-r);
+  overflow: hidden;
+  background: #060f20;
+  box-shadow: 0 6px 24px rgba(0,0,0,.35);
+}
+.psdb-sa-ui svg { display: block; width: 100%; height: auto; }
+.psdb-sa-ui-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  font-size: .82rem;
+  color: var(--psdb-sa-muted);
+  margin-top: 10px;
+}
+.psdb-sa-ui-legend span strong { color: var(--psdb-sa-blue); }
+</style>
+
+<div class="psdb-sa">
+
+<!-- ── HERO SECTION ── -->
+<div class="psdb-sa-hero">
+  <h1>⚙️ SSIS Analyzer</h1>
+  <p>Vollständige Analyse und Dokumentation von SQL Server Integration Services Projekten. Visualisieren Sie den Datenfluss, vergleichen Sie Versionen, und erstellen Sie professionelle HTML-Reports.</p>
+  <div class="psdb-sa-pills">
+    <span class="psdb-sa-pill">.NET 9 WinForms</span>
+    <span class="psdb-sa-pill">Dark Theme</span>
+    <span class="psdb-sa-pill">HTML Export</span>
+    <span class="psdb-sa-pill">Data Lineage</span>
+    <span class="psdb-sa-pill">SSISDB Support</span>
+  </div>
+</div>
+
+<!-- ── GETTING STARTED ── -->
+<div class="psdb-sa-section">
+  <h2>🚀 Schnelleinstieg</h2>
+  <ol>
+    <li><span class="psdb-sa-highlight">SsisAnalyzer.exe</span> starten. Beim ersten Start aktiviert sich automatisch eine <strong>30-Tage-Testversion</strong> ohne Einschränkungen. Nach Ablauf können Sie mit einer installierten Lizenz weitermachen; ohne Lizenz werden HTML-Exporte mit einem Wasserzeichen versehen.</li>
+    <li>Das Fenster öffnet mit einem leeren <strong>Workspace</strong>. Fügen Sie eine oder mehrere Quellen hinzu (siehe Abschnitt 2).</li>
+    <li>Geladene Quellen werden gespeichert und beim nächsten Start automatisch neu geladen.</li>
+  </ol>
+
+  <h3>Benutzeroberfläche</h3>
+
+  <div class="psdb-sa-ui">
+    <svg viewBox="0 0 780 506" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Grafische Benutzeroberfläche des SSIS Analyzer: Symbolleiste mit Suchfeld, links der Projektbaum, oben rechts das Kontrollfluss-Diagramm, unten rechts die Detailansicht.">
+      <title>SSIS Analyzer – Benutzeroberfläche</title>
+      <!-- window -->
+      <rect x="4" y="4" width="772" height="498" rx="8" fill="#060f20" stroke="#2e86c1" stroke-width="1.5"/>
+      <!-- title bar -->
+      <rect x="5" y="5" width="770" height="30" fill="#0a1830"/>
+      <circle cx="24" cy="20" r="6" fill="#5dade2"/>
+      <text x="38" y="24" font-family="Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#e2e8f0">SSIS Analyzer</text>
+      <text x="160" y="24" font-family="Segoe UI, sans-serif" font-size="12" fill="#94a8c0">— Workspace: Zebra</text>
+      <line x1="716" y1="16" x2="726" y2="16" stroke="#94a8c0" stroke-width="1.5"/>
+      <rect x="738" y="13" width="9" height="8" fill="none" stroke="#94a8c0" stroke-width="1.5"/>
+      <line x1="760" y1="14" x2="768" y2="22" stroke="#cfd8e3" stroke-width="1.5"/>
+      <line x1="768" y1="14" x2="760" y2="22" stroke="#cfd8e3" stroke-width="1.5"/>
+      <!-- menu bar -->
+      <rect x="5" y="35" width="770" height="22" fill="#08152b"/>
+      <text x="18"  y="50" font-family="Segoe UI, sans-serif" font-size="12" fill="#cdd9e8">Datei</text>
+      <text x="64"  y="50" font-family="Segoe UI, sans-serif" font-size="12" fill="#cdd9e8">Bearbeiten</text>
+      <text x="140" y="50" font-family="Segoe UI, sans-serif" font-size="12" fill="#cdd9e8">Ansicht</text>
+      <text x="206" y="50" font-family="Segoe UI, sans-serif" font-size="12" fill="#cdd9e8">Hilfe</text>
+      <!-- toolbar -->
+      <rect x="5" y="57" width="770" height="38" fill="#0b1e3d"/>
+      <g stroke="#2e86c1" fill="#12325c">
+        <rect x="14"  y="64" width="26" height="24" rx="4"/>
+        <rect x="46"  y="64" width="26" height="24" rx="4"/>
+        <rect x="78"  y="64" width="26" height="24" rx="4"/>
+        <rect x="118" y="64" width="26" height="24" rx="4"/>
+        <rect x="150" y="64" width="26" height="24" rx="4"/>
+      </g>
+      <g stroke="#5dade2" stroke-width="1.6" fill="none" stroke-linecap="round">
+        <path d="M21 80 h12 M21 76 h12 M21 84 h8"/>
+        <rect x="53" y="70" width="12" height="12" rx="1"/>
+        <path d="M85 70 v12 M85 70 h7 l3 3 v9"/>
+        <path d="M125 82 l4 -10 4 10 M126 79 h6"/>
+        <path d="M157 70 v12 m-4 -8 8 8 m0 -8 -8 8" stroke-width="1.3"/>
+      </g>
+      <!-- search box -->
+      <rect x="556" y="63" width="206" height="26" rx="5" fill="#041634" stroke="#2e86c1"/>
+      <circle cx="570" cy="76" r="4.5" fill="none" stroke="#94a8c0" stroke-width="1.5"/>
+      <line x1="573" y1="79" x2="577" y2="83" stroke="#94a8c0" stroke-width="1.5"/>
+      <text x="586" y="80" font-family="Segoe UI, sans-serif" font-size="12" fill="#9fb3c9">Load_FA</text>
+      <text x="724" y="80" font-family="Segoe UI, sans-serif" font-size="11" fill="#5dade2">5</text>
+
+      <!-- LEFT: tree -->
+      <rect x="12" y="102" width="236" height="378" rx="4" fill="#08152b" stroke="#1c3a63"/>
+      <!-- selected row highlight (Kontrollfluss) -->
+      <rect x="13" y="290" width="234" height="22" fill="#1d4e7a"/>
+      <rect x="13" y="290" width="3" height="22" fill="#5dade2"/>
+      <g font-family="Segoe UI, sans-serif" font-size="12.5">
+        <text x="22"  y="129" fill="#5dade2">▾</text><text x="40"  y="129" fill="#e2e8f0">Workspace</text>
+        <text x="38"  y="152" fill="#5dade2">▾</text><text x="56"  y="152" fill="#e2e8f0">Zebra.ispac</text>
+        <text x="72"  y="175" fill="#94a8c0">•</text><text x="86"  y="175" fill="#cfe0f2">Parameter (2)</text>
+        <text x="72"  y="198" fill="#94a8c0">•</text><text x="86"  y="198" fill="#cfe0f2">Verbindungen (5)</text>
+        <text x="72"  y="221" fill="#5dade2">▾</text><text x="86"  y="221" fill="#cfe0f2">Pakete (35)</text>
+        <text x="92"  y="244" fill="#5dade2">▾</text><text x="106" y="244" fill="#e2e8f0">9_0_Load_FA_HA</text>
+        <text x="110" y="267" fill="#94a8c0">•</text><text x="124" y="267" fill="#cfe0f2">Eigenschaften</text>
+        <text x="110" y="290" fill="#94a8c0">•</text><text x="124" y="290" fill="#cfe0f2">Variablen</text>
+        <text x="110" y="306" fill="#bfe1ff">▸</text><text x="124" y="306" fill="#ffffff" font-weight="700">Kontrollfluss</text>
+        <text x="110" y="329" fill="#94a8c0">•</text><text x="124" y="329" fill="#cfe0f2">Datenfluss</text>
+        <text x="110" y="352" fill="#94a8c0">•</text><text x="124" y="352" fill="#cfe0f2">Event Handler</text>
+        <text x="92"  y="375" fill="#5dade2">▸</text><text x="106" y="375" fill="#cfe0f2">8_0_Load_RPT</text>
+      </g>
+
+      <!-- RIGHT TOP: control-flow diagram -->
+      <rect x="256" y="102" width="508" height="196" rx="4" fill="#08152b" stroke="#1c3a63"/>
+      <text x="268" y="120" font-family="Segoe UI, sans-serif" font-size="12" font-weight="700" fill="#5dade2">Kontrollfluss-Diagramm</text>
+      <!-- boxes -->
+      <g font-family="Segoe UI, sans-serif" font-size="12">
+        <rect x="296" y="146" width="150" height="38" rx="5" fill="#0b2647" stroke="#2e548c"/>
+        <text x="371" y="170" text-anchor="middle" fill="#cfe3f5">select RUN_ID</text>
+        <rect x="296" y="232" width="200" height="38" rx="5" fill="#143a66" stroke="#5dade2" stroke-width="2"/>
+        <text x="396" y="256" text-anchor="middle" fill="#ffffff" font-weight="700">Execute 9_1_Load_RPT</text>
+        <rect x="548" y="189" width="180" height="38" rx="5" fill="#0b2647" stroke="#2e548c"/>
+        <text x="638" y="213" text-anchor="middle" fill="#cfe3f5">9_2_Load_FA_HA</text>
+      </g>
+      <!-- arrows -->
+      <g stroke="#5dade2" stroke-width="1.6" fill="none">
+        <path d="M371 184 V232" marker-end="url(#saArr)"/>
+        <path d="M496 244 H548 V224" marker-end="url(#saArr)"/>
+      </g>
+      <defs>
+        <marker id="saArr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0 0 L6 3 L0 6 Z" fill="#5dade2"/>
+        </marker>
+      </defs>
+
+      <!-- RIGHT BOTTOM: details pane -->
+      <rect x="256" y="306" width="508" height="174" rx="4" fill="#08152b" stroke="#1c3a63"/>
+      <text x="268" y="324" font-family="Segoe UI, sans-serif" font-size="12" font-weight="700" fill="#5dade2">Details — Execute SQL Task</text>
+      <g font-family="Segoe UI, sans-serif" font-size="12">
+        <text x="270" y="346" fill="#94a8c0">Name</text>        <text x="380" y="346" fill="#e2e8f0">9_1_Load_RPT_FA_HA</text>
+        <text x="270" y="366" fill="#94a8c0">Verbindung</text>  <text x="380" y="366" fill="#e2e8f0">HistoDB</text>
+        <text x="270" y="386" fill="#94a8c0">Typ</text>         <text x="380" y="386" fill="#e2e8f0">Execute SQL Task</text>
+      </g>
+      <!-- SQL snippet -->
+      <rect x="270" y="398" width="480" height="70" rx="4" fill="#041634" stroke="#1c3a63"/>
+      <g font-family="Consolas, monospace" font-size="11.5">
+        <text x="282" y="417"><tspan fill="#5dade2">SELECT</tspan><tspan fill="#cfe3f5"> RUN_ID, STATUS</tspan></text>
+        <text x="282" y="434"><tspan fill="#5dade2">FROM</tspan><tspan fill="#cfe3f5"> dbo.RunControl</tspan></text>
+        <text x="282" y="451"><tspan fill="#5dade2">WHERE</tspan><tspan fill="#cfe3f5"> LoadDate = </tspan><tspan fill="#f9c270">?</tspan><tspan fill="#cfe3f5">;</tspan></text>
+      </g>
+
+      <!-- status bar -->
+      <rect x="5" y="481" width="770" height="20" fill="#0a1830"/>
+      <text x="18" y="495" font-family="Segoe UI, sans-serif" font-size="11" fill="#94a8c0">5 Treffer  ·  Zebra.ispac geladen (35 Pakete)  ·  Lizenz: Testversion (28 Tage)</text>
+    </svg>
+  </div>
+
+  <div class="psdb-sa-ui-legend">
+    <span><strong>Links:</strong> Baum mit allen Elementen</span>
+    <span><strong>Oben rechts:</strong> Kontrollfluss-Diagramm</span>
+    <span><strong>Unten rechts:</strong> Details-Pane</span>
+    <span><strong>Oben:</strong> Symbolleiste mit Suchfeld</span>
+  </div>
+</div>
+
+<!-- ── LOADING PROJECTS ── -->
+<div class="psdb-sa-section">
+  <h2>📂 Projekte laden</h2>
+  <p>Menü: <span class="psdb-sa-highlight">Datei</span></p>
+
+  <table class="psdb-sa-table">
+    <tr>
+      <th>Aktion</th>
+      <th>Beschreibung</th>
+    </tr>
+    <tr>
+      <td><strong>Hinzufügen</strong></td>
+      <td>Ein oder mehrere <span class="psdb-sa-inline-code">.ispac</span> Projektdateien laden</td>
+    </tr>
+    <tr>
+      <td><strong>DTSX</strong></td>
+      <td>Ein einzelnes <span class="psdb-sa-inline-code">.dtsx</span> Paket laden (als Ein-Paket-Projekt)</td>
+    </tr>
+    <tr>
+      <td><strong>SSISDB</strong></td>
+      <td>Ein bereitgestelltes Projekt aus dem SSIS-Katalog laden</td>
+    </tr>
+    <tr>
+      <td><strong>Entfernen</strong></td>
+      <td>Markiertes Projekt aus dem Workspace entfernen</td>
+    </tr>
+    <tr>
+      <td><strong>Aktualisieren</strong></td>
+      <td>Alle Quellen vom Datenträger / Katalog neu laden</td>
+    </tr>
+  </table>
+
+  <h3>Laden aus SSISDB</h3>
+  <p><strong>Datei → Aus SSISDB laden…</strong> → Server eingeben, Authentifizierung wählen (Windows oder SQL), verbinden, Ordner/Projekt auswählen, laden. Das Projektbinärformat wird über <span class="psdb-sa-inline-code">catalog.get_project</span> abgerufen und genauso wie eine Datei analysiert. Katalog-spezifische Metadaten (Bereitstellungsinfos, Umgebungen, Parameter-Werte, Referenzen) erscheinen unter dem Katalog-Ast des Projekts.</p>
+  <div class="psdb-sa-feature-box">
+    <strong>⚠️ Sicherheit:</strong> Passwörter werden niemals gespeichert. SQL-Auth-Quellen fragen bei erneutem Laden nach dem Passwort.
+  </div>
+</div>
+
+<!-- ── EXPLORING ── -->
+<div class="psdb-sa-section">
+  <h2>🔍 Ein Paket erkunden</h2>
+  <p>Expandieren Sie im Baum: Projekt → Pakete → Paket. Jedes Paket zeigt:</p>
+
+  <ul>
+    <li><strong>Eigenschaften:</strong> Ersteller, Daten, Schutzlevel, Gebietsschema …</li>
+    <li><strong>Parameter, Variablen, Verbindungen</strong> (Verbindungsstring aufgeschlüsselt nach Server/DB/Benutzer)</li>
+    <li><strong>Ausdrücke:</strong> Alle SSIS-Ausdrücke zentral gesammelt</li>
+    <li><strong>Kontrollflusss:</strong> Executable/Container-Baum in Ausführungsreihenfolge</li>
+    <li><strong>Event Handler</strong></li>
+    <li><strong>Datenfluss-Komponenten:</strong> Mit Ein-/Ausgabespalten</li>
+  </ul>
+
+  <h3>Kontrollflusss-Diagramm</h3>
+  <p>Das obere rechte Panel zeichnet das Paket/den Container mit Boxen (positioniert nach dem gespeicherten Layout) und Abhängigkeitspfeilen. Klicken Sie auf eine Box, um den entsprechenden Baum-Knoten auszuwählen.</p>
+
+  <h3>Suche</h3>
+  <p>Geben Sie im Suchfeld (≥ 2 Zeichen) ein: Treffer werden hervorgehoben und erweitert. <strong>Enter</strong> springt zum nächsten Treffer. Die Anzahl der Treffer wird in der Statusleiste angezeigt.</p>
+
+  <div class="psdb-sa-feature-box">
+    <strong>💡 Tipp:</strong> SQL-Blöcke werden automatisch formatiert und mit Syntax-Hervorhebung angezeigt. Execute-SQL-Tasks zeigen die Verbindung, Parameter/Ergebnis-Bindungen und das SQL.
+  </div>
+</div>
+
+<!-- ── COMPARE ── -->
+<div class="psdb-sa-section">
+  <h2>🔄 Zwei Projekte vergleichen</h2>
+  <p><strong>Datei → Projekte vergleichen…</strong> — wählen Sie Project <strong>A (alt)</strong> und <strong>B (neu)</strong> aus den geladenen Projekten aus (beliebige Mischung von Datei / SSISDB).</p>
+
+  <p><strong>Anwendungsfall:</strong> Laden Sie die <span class="psdb-sa-inline-code">.ispac</span> Build und das bereitgestellte SSISDB-Projekt, dann vergleichen Sie VOR dem Deployment.</p>
+
+  <p>Das Vergleichsfenster zeigt einen farbcodierten Baum:</p>
+  <ul>
+    <li><strong style="color: #6ee7b7;">+</strong> Hinzugefügt</li>
+    <li><strong style="color: #f9a8d4;">−</strong> Entfernt</li>
+    <li><strong style="color: #fbbf24;">~</strong> Geändert (echte Änderungen sind <strong>fett</strong>)</li>
+  </ul>
+
+  <p><strong>SQL-Änderungen</strong> zeigen einen Zeile-für-Zeile-Diff. Schalter: <strong>Nur Unterschiede</strong> und <strong>Deployment-Only ausblenden</strong> (unterdrückt Datei↔Katalog-Rauschen wie ProtectionLevel).</p>
+
+  <div class="psdb-sa-ui">
+    <svg viewBox="0 0 780 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Vergleichsfenster des SSIS Analyzer: links der farbcodierte Diff-Baum, rechts der Zeile-für-Zeile SQL-Diff mit hinzugefügten und entfernten Zeilen.">
+      <title>SSIS Analyzer – Projektvergleich</title>
+      <rect x="4" y="4" width="772" height="422" rx="8" fill="#060f20" stroke="#2e86c1" stroke-width="1.5"/>
+      <!-- title bar -->
+      <rect x="5" y="5" width="770" height="30" fill="#0a1830"/>
+      <circle cx="24" cy="20" r="6" fill="#5dade2"/>
+      <text x="38" y="24" font-family="Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#e2e8f0">Projekte vergleichen</text>
+      <text x="210" y="24" font-family="Segoe UI, sans-serif" font-size="12" fill="#94a8c0">A: Zebra.ispac  ↔  B: SSISDB / Zebra</text>
+      <!-- toolbar: toggles + export -->
+      <rect x="5" y="35" width="770" height="34" fill="#0b1e3d"/>
+      <rect x="16" y="42" width="16" height="16" rx="3" fill="#143a66" stroke="#5dade2"/>
+      <path d="M19 50 l3 3 l6 -7" fill="none" stroke="#5dade2" stroke-width="1.8"/>
+      <text x="40" y="55" font-family="Segoe UI, sans-serif" font-size="12" fill="#cdd9e8">Nur Unterschiede</text>
+      <rect x="186" y="42" width="16" height="16" rx="3" fill="#143a66" stroke="#5dade2"/>
+      <path d="M189 50 l3 3 l6 -7" fill="none" stroke="#5dade2" stroke-width="1.8"/>
+      <text x="210" y="55" font-family="Segoe UI, sans-serif" font-size="12" fill="#cdd9e8">Deployment-Only ausblenden</text>
+      <rect x="636" y="40" width="126" height="22" rx="5" fill="#2e86c1"/>
+      <text x="699" y="55" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="12" font-weight="700" fill="#ffffff">Als HTML exportieren…</text>
+
+      <!-- LEFT: diff tree -->
+      <rect x="12" y="78" width="318" height="338" rx="4" fill="#08152b" stroke="#1c3a63"/>
+      <rect x="13" y="196" width="316" height="22" fill="#1d4e7a"/>
+      <rect x="13" y="196" width="3" height="22" fill="#5dade2"/>
+      <g font-family="Segoe UI, sans-serif" font-size="12.5">
+        <text x="24"  y="102" fill="#5dade2">▾</text><text x="42"  y="102" fill="#e2e8f0">Zebra</text>
+        <text x="40"  y="125" fill="#5dade2">▾</text><text x="58"  y="125" fill="#cfe0f2">Pakete</text>
+        <text x="62"  y="148" fill="#fbbf24">~</text><text x="78"  y="148" fill="#fbbf24" font-weight="700">9_0_Load_FA_HA</text>
+        <text x="84"  y="171" fill="#94a8c0">•</text><text x="98"  y="171" fill="#cfe0f2">Eigenschaften</text>
+        <text x="84"  y="194" fill="#fbbf24">~</text><text x="98"  y="194" fill="#fbbf24" font-weight="700">SQL: select RUN_ID</text>
+        <text x="84"  y="217" fill="#6ee7b7">+</text><text x="98"  y="217" fill="#6ee7b7" font-weight="700">Variable: BatchSize</text>
+        <text x="84"  y="240" fill="#f9a8d4">−</text><text x="98"  y="240" fill="#f9a8d4" font-weight="700">Connection: TempDB</text>
+        <text x="62"  y="263" fill="#94a8c0">=</text><text x="78"  y="263" fill="#8aa1bb">8_0_Load_RPT (unverändert)</text>
+        <text x="40"  y="286" fill="#fbbf24">~</text><text x="58"  y="286" fill="#fbbf24" font-weight="700">Projekt-Parameter</text>
+      </g>
+      <!-- legend -->
+      <g font-family="Segoe UI, sans-serif" font-size="11">
+        <text x="24" y="400" fill="#6ee7b7" font-weight="700">+ Hinzugefügt</text>
+        <text x="130" y="400" fill="#f9a8d4" font-weight="700">− Entfernt</text>
+        <text x="218" y="400" fill="#fbbf24" font-weight="700">~ Geändert</text>
+      </g>
+
+      <!-- RIGHT: SQL line diff -->
+      <rect x="338" y="78" width="426" height="338" rx="4" fill="#08152b" stroke="#1c3a63"/>
+      <text x="350" y="98" font-family="Segoe UI, sans-serif" font-size="12" font-weight="700" fill="#5dade2">SQL-Diff — Execute SQL Task „select RUN_ID“</text>
+      <g font-family="Consolas, monospace" font-size="11.5">
+        <!-- unchanged -->
+        <text x="356" y="124" fill="#5b6f88">  SELECT RUN_ID, STATUS</text>
+        <!-- removed -->
+        <rect x="346" y="130" width="410" height="18" fill="rgba(244,63,94,0.18)"/>
+        <text x="356" y="143" fill="#f9a8d4">− FROM dbo.RunControl</text>
+        <!-- added -->
+        <rect x="346" y="150" width="410" height="18" fill="rgba(34,197,94,0.16)"/>
+        <text x="356" y="163" fill="#6ee7b7">+ FROM dbo.RunControl WITH (NOLOCK)</text>
+        <!-- unchanged -->
+        <text x="356" y="183" fill="#5b6f88">  WHERE LoadDate = ?</text>
+        <!-- added -->
+        <rect x="346" y="189" width="410" height="18" fill="rgba(34,197,94,0.16)"/>
+        <text x="356" y="202" fill="#6ee7b7">+   AND STATUS = 'OPEN'</text>
+        <!-- unchanged -->
+        <text x="356" y="222" fill="#5b6f88">  ORDER BY RUN_ID;</text>
+      </g>
+      <!-- field-change panel -->
+      <rect x="346" y="240" width="410" height="166" rx="4" fill="#041634" stroke="#1c3a63"/>
+      <text x="358" y="260" font-family="Segoe UI, sans-serif" font-size="12" font-weight="700" fill="#5dade2">Feld-Änderungen</text>
+      <g font-family="Segoe UI, sans-serif" font-size="11.5">
+        <text x="358" y="284" fill="#94a8c0">DelayValidation</text>
+        <text x="540" y="284" fill="#f9a8d4">False</text>
+        <text x="590" y="284" fill="#94a8c0">→</text>
+        <text x="610" y="284" fill="#6ee7b7">True</text>
+        <text x="358" y="308" fill="#94a8c0">IsolationLevel</text>
+        <text x="540" y="308" fill="#f9a8d4">Serializable</text>
+        <text x="358" y="332" fill="#94a8c0">TimeOut</text>
+        <text x="540" y="332" fill="#f9a8d4">0</text>
+        <text x="590" y="332" fill="#94a8c0">→</text>
+        <text x="610" y="332" fill="#6ee7b7">30</text>
+      </g>
+      <text x="358" y="372" font-family="Segoe UI, sans-serif" font-size="11" fill="#7f93ab" font-style="italic">Deployment-Only-Felder (ProtectionLevel, VersionGUID) ausgeblendet</text>
+    </svg>
+  </div>
+  <div class="psdb-sa-ui-legend">
+    <span><strong>Links:</strong> farbcodierter Diff-Baum (nur Geänderte aufgeklappt)</span>
+    <span><strong>Rechts oben:</strong> SQL-Zeilen-Diff</span>
+    <span><strong>Rechts unten:</strong> Feld-Änderungen alt → neu</span>
+  </div>
+
+  <div class="psdb-sa-feature-box">
+    <strong>📤 Export:</strong> Klicken Sie <strong>Als HTML exportieren…</strong> um einen Report zu schreiben.
+  </div>
+</div>
+
+<!-- ── LINEAGE ── -->
+<div class="psdb-sa-section">
+  <h2>📊 Datenfluss-Lineage</h2>
+  <p><strong>Datei → Lineage</strong> (oder Symbolleiste) erstellt eine Lineage über den gesamten Workspace (projektübergreifend, End-to-End).</p>
+
+  <h3>Tabs</h3>
+  <ul>
+    <li><strong>Tabellenfluss:</strong> Quell-Tabelle → Ziel-Tabelle Kanten, mit dem Paket/Task, das sie erstellt</li>
+    <li><strong>Tabellen-Explorer:</strong> Wählen Sie eine Tabelle, um ihre <strong>upstream</strong> Quellen und <strong>downstream</strong> Ziele (transitiv) zu sehen, plus <strong>betroffene Pakete</strong> (Auswirkungsanalyse)</li>
+    <li><strong>Paket-Aufrufliste:</strong> Welcher Paket welchen aufruft (aus Execute-Package-Tasks)</li>
+    <li><strong>Spalten-Links:</strong> Quell-Spalte → Ziel-Spalte Mappings innerhalb jedes Datenflusses</li>
+  </ul>
+
+  <div class="psdb-sa-feature-box">
+    <strong>📌 Hinweis:</strong> Spalten-Level-Lineage ist zuverlässig <strong>innerhalb eines Datenflusses</strong> (aus <span class="psdb-sa-inline-code">lineageId</span>). Tabellen-Level-Lineage aus Execute-SQL-Tasks ist heuristisch (geparst aus dem SQL-Text).
+  </div>
+
+  <div class="psdb-sa-ui">
+    <svg viewBox="0 0 780 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Lineage-Fenster des SSIS Analyzer mit Tabs für Tabellenfluss, Tabellen-Explorer, Paket-Aufrufliste und Spalten-Links sowie einem gezeichneten Tabellenfluss-Graphen.">
+      <title>SSIS Analyzer – Datenfluss-Lineage</title>
+      <rect x="4" y="4" width="772" height="422" rx="8" fill="#060f20" stroke="#2e86c1" stroke-width="1.5"/>
+      <!-- title bar -->
+      <rect x="5" y="5" width="770" height="30" fill="#0a1830"/>
+      <circle cx="24" cy="20" r="6" fill="#5dade2"/>
+      <text x="38" y="24" font-family="Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#e2e8f0">Datenfluss-Lineage</text>
+      <text x="200" y="24" font-family="Segoe UI, sans-serif" font-size="12" fill="#94a8c0">Workspace (projektübergreifend)</text>
+      <!-- tabs -->
+      <rect x="5" y="35" width="770" height="30" fill="#0b1e3d"/>
+      <rect x="12" y="39" width="120" height="26" rx="4" fill="#08152b" stroke="#5dade2"/>
+      <text x="72" y="56" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="12" font-weight="700" fill="#5dade2">Tabellenfluss</text>
+      <text x="200" y="56" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="12" fill="#9fb3c9">Tabellen-Explorer</text>
+      <text x="340" y="56" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="12" fill="#9fb3c9">Paket-Aufrufliste</text>
+      <text x="470" y="56" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="12" fill="#9fb3c9">Spalten-Links</text>
+
+      <!-- canvas -->
+      <rect x="12" y="74" width="752" height="342" rx="4" fill="#08152b" stroke="#1c3a63"/>
+
+      <!-- table-flow graph -->
+      <defs>
+        <marker id="saArrL" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto">
+          <path d="M0 0 L6 3 L0 6 Z" fill="#5dade2"/>
+        </marker>
+      </defs>
+      <!-- nodes -->
+      <g font-family="Segoe UI, sans-serif" font-size="12">
+        <!-- source -->
+        <rect x="40" y="120" width="150" height="40" rx="5" fill="#0b2647" stroke="#2e548c"/>
+        <text x="115" y="138" text-anchor="middle" fill="#cfe3f5">DB2_RPT.dbo</text>
+        <text x="115" y="153" text-anchor="middle" fill="#8fb3d8" font-size="11">.FA_HA_SRC</text>
+        <rect x="40" y="230" width="150" height="40" rx="5" fill="#0b2647" stroke="#2e548c"/>
+        <text x="115" y="248" text-anchor="middle" fill="#cfe3f5">stg.RunControl</text>
+        <text x="115" y="263" text-anchor="middle" fill="#8fb3d8" font-size="11">(read)</text>
+        <!-- mid (highlighted / selected table) -->
+        <rect x="318" y="175" width="170" height="42" rx="5" fill="#143a66" stroke="#5dade2" stroke-width="2"/>
+        <text x="403" y="193" text-anchor="middle" fill="#ffffff" font-weight="700">Histo.dbo.FA_HA</text>
+        <text x="403" y="209" text-anchor="middle" fill="#bfe1ff" font-size="11">write + read</text>
+        <!-- targets -->
+        <rect x="600" y="120" width="150" height="40" rx="5" fill="#0b2647" stroke="#2e548c"/>
+        <text x="675" y="138" text-anchor="middle" fill="#cfe3f5">Histo.dbo.FA_HA</text>
+        <text x="675" y="153" text-anchor="middle" fill="#8fb3d8" font-size="11">_Hist</text>
+        <rect x="600" y="230" width="150" height="40" rx="5" fill="#0b2647" stroke="#2e548c"/>
+        <text x="675" y="253" text-anchor="middle" fill="#cfe3f5">rpt.FA_Summary</text>
+      </g>
+      <!-- edges with task labels -->
+      <g stroke="#5dade2" stroke-width="1.6" fill="none">
+        <path d="M190 140 C 250 150, 270 190, 318 192" marker-end="url(#saArrL)"/>
+        <path d="M190 250 C 250 240, 270 205, 318 200" marker-end="url(#saArrL)"/>
+        <path d="M488 192 C 545 185, 560 145, 600 142" marker-end="url(#saArrL)"/>
+        <path d="M488 200 C 545 215, 560 245, 600 248" marker-end="url(#saArrL)"/>
+      </g>
+      <g font-family="Segoe UI, sans-serif" font-size="10.5" fill="#7f93ab">
+        <text x="250" y="158">9_2_Load_FA_HA</text>
+        <text x="250" y="232">select RUN_ID</text>
+        <text x="540" y="135">9_1_Load_RPT</text>
+        <text x="540" y="262">Build_Summary</text>
+      </g>
+
+      <!-- impact side-note -->
+      <rect x="318" y="252" width="430" height="150" rx="4" fill="#041634" stroke="#1c3a63"/>
+      <text x="330" y="272" font-family="Segoe UI, sans-serif" font-size="12" font-weight="700" fill="#5dade2">Auswirkungsanalyse — Histo.dbo.FA_HA</text>
+      <g font-family="Segoe UI, sans-serif" font-size="11.5">
+        <text x="330" y="296" fill="#94a8c0">Upstream (Quellen):</text>
+        <text x="330" y="314" fill="#cfe3f5">DB2_RPT.dbo.FA_HA_SRC, stg.RunControl</text>
+        <text x="330" y="338" fill="#94a8c0">Downstream (Ziele):</text>
+        <text x="330" y="356" fill="#cfe3f5">Histo.dbo.FA_HA_Hist, rpt.FA_Summary</text>
+        <text x="330" y="380" fill="#94a8c0">Betroffene Pakete:</text>
+        <text x="330" y="398" fill="#f9c270">9_0_Load_FA_HA, 9_1_Load_RPT, 12_Build_Summary</text>
+      </g>
+    </svg>
+  </div>
+  <div class="psdb-sa-ui-legend">
+    <span><strong>Tabs:</strong> Tabellenfluss · Tabellen-Explorer · Paket-Aufrufliste · Spalten-Links</span>
+    <span><strong>Graph:</strong> Quell- → Ziel-Tabellen mit erzeugendem Task</span>
+    <span><strong>Panel:</strong> Upstream/Downstream + betroffene Pakete</span>
+  </div>
+
+  <p><strong>Als HTML exportieren…</strong> erzeugt einen Lineage-Report einschließlich eines gezeichneten <strong>Paket-Fluss SVG-Graphen</strong>.</p>
+</div>
+
+<!-- ── HTML EXPORT ── -->
+<div class="psdb-sa-section">
+  <h2>📄 HTML-Export</h2>
+  <p><strong>Datei → HTML exportieren…</strong> → Ordner wählen.</p>
+
+  <p>Erzeugt eine selbstständige Dokumentation:</p>
+  <ul>
+    <li><span class="psdb-sa-inline-code">index.html</span> — Übersicht aller Projekte + Link zum Workspace-Lineage-Report</li>
+    <li><strong>Eine Seite pro Projekt</strong> — jeden Element als Tabellen/Formulare, formatiertes und hervorgehobenes SQL, eingebettetes Kontrollflusss-SVG pro Paket, Ausdrücke-Tabelle</li>
+    <li><span class="psdb-sa-inline-code">lineage.html</span> — Workspace-weiter Lineage-Report</li>
+  </ul>
+
+  <p><strong>Keine externen Abhängigkeiten.</strong> Öffnen Sie <span class="psdb-sa-inline-code">index.html</span> in jedem Browser.</p>
+</div>
+
+<!-- ── WORKSPACES ── -->
+<div class="psdb-sa-section">
+  <h2>💾 Benannte Workspaces</h2>
+  <ul>
+    <li><strong>Datei → Workspace speichern unter…</strong> — den aktuellen Satz von Quellen in einer <span class="psdb-sa-inline-code">.ssisws</span> Datei speichern</li>
+    <li><strong>Datei → Workspace öffnen…</strong> — ein gespeichertes Workspace-Set laden</li>
+  </ul>
+  <p>Nützlich, um separate Sets zu halten (z.B. <em>DEV</em>, <em>PROD</em>, <em>Übergabe</em>). Der aktuelle Workspace wird auch automatisch zwischen Sitzungen beibehalten.</p>
+</div>
+
+<!-- ── APPEARANCE ── -->
+<div class="psdb-sa-section">
+  <h2>🎨 Erscheinungsbild</h2>
+  <p>Visual-Studio Dark Theme durchgängig (dunkle Titelleiste, Menüs, Symbolleiste, Baum, Listen, Tabs, Diagramm), monochrome Symbolleisten-Icons.</p>
+</div>
+
+<!-- ── COMMAND LINE ── -->
+<div class="psdb-sa-section">
+  <h2>💻 Befehlszeile (Automatisierung / CI)</h2>
+  <p>Für Integration in Build-Prozesse und CI/CD-Pipelines:</p>
+
+  <div class="psdb-sa-code">SsisAnalyzer.exe --dump    &lt;project.ispac&gt;                  Konsolenzusammenfassung des Parse
+SsisAnalyzer.exe --export  &lt;project.ispac&gt; [outDir]         HTML-Dokumentation schreiben
+SsisAnalyzer.exe --compare &lt;a.ispac&gt; &lt;b.ispac&gt; [out.html]   Vergleichsbericht schreiben
+SsisAnalyzer.exe --lineage &lt;project.ispac&gt;                  Lineage-Zusammenfassung + lineage.html</div>
+</div>
+
+<!-- ── LICENSING ── -->
+<div class="psdb-sa-section">
+  <h2>🔐 Lizenzierung</h2>
+  <ul>
+    <li><strong>Testversion:</strong> 30 Tage ab erstem Start, vollständig funktionsfähig</li>
+    <li><strong>Lizenzierung:</strong> <strong>Hilfe → Über / Lizenz…</strong> zeigt den Status, Ihre <strong>Machine ID</strong> und einen <strong>Lizenz installieren…</strong>-Button. Senden Sie die Machine ID an den Anbieter um eine maschinen-gebundene Lizenz zu erhalten; installieren Sie die <span class="psdb-sa-inline-code">.lic</span> Datei hier.</li>
+    <li><strong>Ohne gültige Lizenz</strong> nach der Testversion läuft die App weiterhin, aber HTML-Exporte tragen eine "UNLIZENZIERTE BEWERTUNGSKOPIE"-Markierung.</li>
+  </ul>
+</div>
+
+<!-- ── FOOTER ── -->
+<div class="psdb-sa-section" style="border: none; background: transparent; text-align: center; padding: 16px 0; margin-top: 40px;">
+  <p style="color: #94a8c0; font-size: .9rem;">
+    <strong>SSIS Analyzer</strong> — Professionelle Analyse- und Dokumentationslösung für SQL Server Integration Services<br>
+    © dtcSoftware · Janke<br>
+    <a href="https://github.com/JankeUwe/SsisAnalyzer" style="color: var(--psdb-sa-blue); text-decoration: none;">🔗 GitHub Repository</a>
+  </p>
+</div>
+
+</div>

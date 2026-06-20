@@ -46,8 +46,11 @@ function Get-SqlPaths {
         "MSSQL`$$InstanceName"
     }
 
+    # Build the path by string concatenation, NOT Join-Path: Join-Path resolves the
+    # drive qualifier and throws DriveNotFoundException when the target drive is not
+    # present yet (e.g. a -WhatIf dry run, or disks attached only on the real server).
     function p([string]$drive, [string]$sub, [string]$leaf) {
-        return Join-Path "$($drive):\$sub\$instSuffix" $leaf
+        return "$($drive):\$sub\$instSuffix\$leaf"
     }
 
     # SysDb-Pfad (INSTALLSQLDATADIR): BackupDrive + SysDbSubPath

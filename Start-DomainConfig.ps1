@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Startet den Domain-Profil-Editor (Config\domains\*.ini).
