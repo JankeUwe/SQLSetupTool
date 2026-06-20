@@ -483,10 +483,11 @@ function Show-SetupForm {
 
     # CollationDomain: in v5 Config nicht mehr als eigenes Property vorhanden.
     # Ableiten: wenn Domain gesetzt und DefaultCollation != Standard -> Domain-Vorgabe aktiv.
+    $collList = @($Config.CollationList)
     $collHint = if ($Config.Domain -and
-                    $Config.CollationList.Count -gt 0 -and
-                    $Config.CollationList[0] -ne 'SQL_Latin1_General_CP1_CI_AS') {
-        "Domain-Sortierung aktiv: $($Config.CollationList[0])"
+                    $collList.Count -gt 0 -and
+                    $collList[0] -ne 'SQL_Latin1_General_CP1_CI_AS') {
+        "Domain-Sortierung aktiv: $($collList[0])"
     } else {
         'Standard-Sortierung'
     }
