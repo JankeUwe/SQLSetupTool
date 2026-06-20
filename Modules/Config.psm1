@@ -119,9 +119,12 @@ function Get-CollationList {
         return @($DefaultCollation)
     }
 
-    $list = Get-Content $collationFile -Encoding UTF8 |
+    # @() erzwingt ein Array - sonst liefert die Pipeline bei 0 Treffern $null
+    # (StrictMode: $null.Count wirft "property 'Count' cannot be found") und bei
+    # genau 1 Treffer einen Skalar.
+    $list = @(Get-Content $collationFile -Encoding UTF8 |
             Where-Object { $_ -match '\S' -and $_ -notmatch '^\s*#' } |
-            ForEach-Object { $_.Trim() }
+            ForEach-Object { $_.Trim() })
 
     if ($list.Count -eq 0) {
         Write-Warning "collations.txt ist leer - verwende nur Standardsortierung."
@@ -130,10 +133,10 @@ function Get-CollationList {
 
     # Domaenen-Collation an erste Stelle, Duplikate entfernen
     if ($DomainCollation -and $DomainCollation -ne '') {
-        $list = @($DomainCollation) + ($list | Where-Object { $_ -ne $DomainCollation })
+        $list = @(@($DomainCollation) + @($list | Where-Object { $_ -ne $DomainCollation }))
     }
 
-    return $list
+    return @($list)
 }
 
 # ---------------------------------------------------------------------------
@@ -581,10 +584,10 @@ function Get-SetupConfig {
         DefaultCollation    = $stdCollation
         SourceShare         = $effectiveSourceShare
 
-        # Listen fuer Comboboxen
-        Versions            = $versions
+        # Listen fuer Comboboxen (@() erzwingt Array - StrictMode-sicher fuer .Count/Index)
+        Versions            = @($versions)
         EditionMap          = $editionMap
-        CollationList       = $collationList
+        CollationList       = @($collationList)
 
         # Seriennummern
         SerialNumbers       = $serialNumbers
@@ -613,12 +616,12 @@ function Get-SetupConfig {
         QualysMonitoringUser  = $qualysMonitoringUser
 
         # Sysadmin-Gruppen (domänenspezifisch, fuer PostInstall)
-        SysadminGroups      = $sysadminGroups
+        SysadminGroups      = @($sysadminGroups)
 
         # Monitoring
         MonitoringEnabled   = $monitoringEnabled
         MonitoringDefault   = $monitoringDefault
-        MonitoringTypes     = $monitoringTypes
+        MonitoringTypes     = @($monitoringTypes)
 
         # Optionale Komponenten
         OptionalComponents  = $optComp
