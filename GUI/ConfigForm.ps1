@@ -987,6 +987,13 @@ function Show-ConfigForm {
     # ---------------------------------------------------------------------------
     # Dialog anzeigen
     # ---------------------------------------------------------------------------
+    # --- Visual Studio "Dark" Theme anwenden (einheitlich mit unseren anderen GUIs) ---
+    . (Join-Path $PSScriptRoot 'Theme.ps1')
+    $vsPalette = Get-VsDarkPalette
+    $form.BackColor = $vsPalette.Panel
+    $form.ForeColor = $vsPalette.Text
+    Set-VsDarkTheme -Control $form -Palette $vsPalette
+
     $result = $form.ShowDialog()
     return ($result -eq [System.Windows.Forms.DialogResult]::OK)
 }

@@ -481,5 +481,12 @@ function Show-DomainConfigForm {
 
     _RefreshList
 
+    # --- Visual Studio "Dark" Theme anwenden (einheitlich mit unseren anderen GUIs) ---
+    . (Join-Path $PSScriptRoot 'Theme.ps1')
+    $vsPalette = Get-VsDarkPalette
+    $form.BackColor = $vsPalette.Panel
+    $form.ForeColor = $vsPalette.Text
+    Set-VsDarkTheme -Control $form -Palette $vsPalette
+
     [System.Windows.Forms.Application]::Run($form)
 }
