@@ -149,7 +149,9 @@ param(
     [string]$LogPath = 'C:\System\WinSrvLog\MSSQL',
 
     [switch]$ProgressReport,
-    [string]$ProgressReportPath
+    [string]$ProgressReportPath,
+
+    [switch]$Force
 )
 
 Set-StrictMode -Version Latest
@@ -229,7 +231,7 @@ $ModulesDir = Join-Path $ScriptDir 'Modules'
 if (-not $ConfigPath) { $ConfigPath = Join-Path $ScriptDir 'Config\settings.ini' }
 
 $moduleNames = @('Config', 'Validation', 'DiskLayout', 'CopySource', 'Installation',
-                 'PostInstall', 'DbaToolsSetup', 'Drivers', 'PreInstall')
+                 'PostInstall', 'DbaToolsSetup', 'Drivers', 'PreInstall', 'SetupState')
 foreach ($mod in $moduleNames) {
     $modPath = Join-Path $ModulesDir "$mod.psm1"
     if (-not (Test-Path $modPath)) { Write-CliLog "Modul nicht gefunden: $modPath" 'ERROR'; exit 1 }
@@ -410,10 +412,15 @@ if (-not $SkipPreInstall -and -not $NonInteractive) {
 # ---------------------------------------------------------------------------
 # 9. Create directories
 # ---------------------------------------------------------------------------
+# Checkpoint/Resume-Kontext fuer die Installations-Phasen (Verzeichnisse, Installation, Komponenten,
+# Treiber). Bei einem erneuten Lauf werden bereits erledigte Phasen uebersprungen. -Force = alles neu.
+$setupState = New-SetupState -InstanceName $selInstance -StatePath $LogPath -Scope 'install' -Force:$Force -LogCallback $logCb
+
 Set-Phase 'dirs' 'SQL-Verzeichnisse anlegen'
-Write-CliLog 'Erstelle SQL-Verzeichnisse ...'
-$dirResults = New-SqlDirectories -SqlPaths $sqlPaths
-foreach ($dr in $dirResults) { Write-CliLog "  $($dr.Status): $($dr.Pfad)" }
+Invoke-SetupStep -Context $setupState -Id 'dirs' -Name 'SQL-Verzeichnisse anlegen' -Body {
+    $dirResults = New-SqlDirectories -SqlPaths $sqlPaths
+    foreach ($dr in $dirResults) { Write-CliLog "  $($dr.Status): $($dr.Pfad)" }
+}
 End-Phase 'dirs' 'Verzeichnisse angelegt'
 
 # ---------------------------------------------------------------------------
@@ -426,27 +433,42 @@ if ($selComponents -notcontains 'SSIS' -and $Config.InstallationConfig.Features 
 }
 
 Set-Phase 'install' "SQL Server $selVersion installieren"
-Write-CliLog "Starte Installation von SQL Server $selVersion ..."
-$installResult = Invoke-SqlInstallation `
-    -SqlPaths          $sqlPaths `
-    -Version           $selVersion `
-    -Edition           $selEdition `
-    -InstanceName      $selInstance `
-    -Collation         $selCollation `
-    -ProductKey        $productKey `
-    -ServiceCredential $serviceCredential `
-    -InstallDrive      $diskLayout['InstallDrive'] `
-    -InstallConfig     $Config.InstallationConfig `
-    -LogCallback       $logCb
+if (Test-SetupStepDone -Context $setupState -Id 'install') {
+    Write-CliLog 'Installation bereits erledigt (Checkpoint) - uebersprungen.' 'OK'
+}
+else {
+    # Durable: eine bereits vorhandene/erreichbare Instanz NICHT erneut installieren.
+    $alreadyInstalled = $false
+    try { $null = Connect-DbaInstance -SqlInstance $selInstance -ErrorAction Stop; $alreadyInstalled = $true } catch { }
+    if ($alreadyInstalled) {
+        Write-CliLog "Instanz '$selInstance' ist bereits vorhanden/erreichbar - Installation uebersprungen." 'OK'
+        Set-SetupStepDone -Context $setupState -Id 'install' -Message 'pre-existing'
+    }
+    else {
+        Write-CliLog "Starte Installation von SQL Server $selVersion ..."
+        $installResult = Invoke-SqlInstallation `
+            -SqlPaths          $sqlPaths `
+            -Version           $selVersion `
+            -Edition           $selEdition `
+            -InstanceName      $selInstance `
+            -Collation         $selCollation `
+            -ProductKey        $productKey `
+            -ServiceCredential $serviceCredential `
+            -InstallDrive      $diskLayout['InstallDrive'] `
+            -InstallConfig     $Config.InstallationConfig `
+            -LogCallback       $logCb
 
-if (-not $installResult.Success) {
-    Emit -Phase 'install' -Step 'install' -State 'error' -Title 'Installation fehlgeschlagen' -Detail $installResult.Message
-    if ($script:EventLog) { New-sqmSetupReport -EventPath $script:EventLog -OutputPath $script:ReportPath -Server $env:COMPUTERNAME | Out-Null }
-    Write-CliLog "Installation fehlgeschlagen: $($installResult.Message)" 'ERROR'
-    exit 3
+        if (-not $installResult.Success) {
+            Emit -Phase 'install' -Step 'install' -State 'error' -Title 'Installation fehlgeschlagen' -Detail $installResult.Message
+            if ($script:EventLog) { New-sqmSetupReport -EventPath $script:EventLog -OutputPath $script:ReportPath -Server $env:COMPUTERNAME | Out-Null }
+            Write-CliLog "Installation fehlgeschlagen: $($installResult.Message)" 'ERROR'
+            exit 3
+        }
+        Set-SetupStepDone -Context $setupState -Id 'install'
+        Write-CliLog "Installation abgeschlossen: $($installResult.Message)" 'OK'
+    }
 }
 End-Phase 'install' 'Installation abgeschlossen'
-Write-CliLog "Installation abgeschlossen: $($installResult.Message)" 'OK'
 
 # Wait for readiness (same loop as GUI)
 Write-CliLog 'Pruefe SQL Server Readiness ...'
@@ -464,28 +486,36 @@ Write-CliLog "  OK: SQL Server $selInstance ist bereit" 'OK'
 $installDrive = $diskLayout['InstallDrive']
 if (@($selComponents | Where-Object { $_ -in 'SSAS', 'SSRS', 'TDP', 'SSMS' }).Count -gt 0) { Set-Phase 'components' 'Optionale Komponenten' }
 if ($selComponents -contains 'SSAS') {
-    Write-CliLog 'Installiere SSAS ...'; Emit -Phase 'components' -Step 'SSAS' -State 'progress' -Title 'Installiere SSAS'
-    Install-SsasComponent -SourcePath "${installDrive}:\SQLSources\SQL$selVersion\SQL_Install" `
-        -InstanceName $selInstance -Collation $selCollation -LogCallback $logCb
+    Invoke-SetupStep -Context $setupState -Id 'comp-SSAS' -Name 'SSAS installieren' -Body {
+        Emit -Phase 'components' -Step 'SSAS' -State 'progress' -Title 'Installiere SSAS'
+        Install-SsasComponent -SourcePath "${installDrive}:\SQLSources\SQL$selVersion\SQL_Install" `
+            -InstanceName $selInstance -Collation $selCollation -LogCallback $logCb
+    }
 }
 if ($selComponents -contains 'SSRS') {
-    Write-CliLog 'Installiere SSRS ...'; Emit -Phase 'components' -Step 'SSRS' -State 'progress' -Title 'Installiere SSRS'
-    $ssrsSplat = @{
-        SourcePath   = "${installDrive}:\SQLSources\SQL$selVersion\Reporting"
-        InstanceName = $selInstance
-        Edition      = $(if ($selEdition) { $selEdition } else { 'Developer' })
-        LogCallback  = $logCb
+    Invoke-SetupStep -Context $setupState -Id 'comp-SSRS' -Name 'SSRS installieren' -Body {
+        Emit -Phase 'components' -Step 'SSRS' -State 'progress' -Title 'Installiere SSRS'
+        $ssrsSplat = @{
+            SourcePath   = "${installDrive}:\SQLSources\SQL$selVersion\Reporting"
+            InstanceName = $selInstance
+            Edition      = $(if ($selEdition) { $selEdition } else { 'Developer' })
+            LogCallback  = $logCb
+        }
+        if ($productKey) { $ssrsSplat['ProductKey'] = $productKey }
+        Install-SsrsComponent @ssrsSplat
     }
-    if ($productKey) { $ssrsSplat['ProductKey'] = $productKey }
-    Install-SsrsComponent @ssrsSplat
 }
 if ($selComponents -contains 'TDP') {
-    Write-CliLog 'Installiere TDP ...'; Emit -Phase 'components' -Step 'TDP' -State 'progress' -Title 'Installiere TDP'
-    Install-TdpComponent -SourcePath "${installDrive}:\SQLSources\TDP" -InstanceName $selInstance -LogCallback $logCb
+    Invoke-SetupStep -Context $setupState -Id 'comp-TDP' -Name 'TDP installieren' -Body {
+        Emit -Phase 'components' -Step 'TDP' -State 'progress' -Title 'Installiere TDP'
+        Install-TdpComponent -SourcePath "${installDrive}:\SQLSources\TDP" -InstanceName $selInstance -LogCallback $logCb
+    }
 }
 if ($selComponents -contains 'SSMS') {
-    Write-CliLog 'Installiere SSMS ...'; Emit -Phase 'components' -Step 'SSMS' -State 'progress' -Title 'Installiere SSMS'
-    Install-SsmsComponent -SourcePath "${installDrive}:\SQLSources\SQL$selVersion\Management" -LogCallback $logCb
+    Invoke-SetupStep -Context $setupState -Id 'comp-SSMS' -Name 'SSMS installieren' -Body {
+        Emit -Phase 'components' -Step 'SSMS' -State 'progress' -Title 'Installiere SSMS'
+        Install-SsmsComponent -SourcePath "${installDrive}:\SQLSources\SQL$selVersion\Management" -LogCallback $logCb
+    }
 }
 if ($script:CurrentPhase -eq 'components') { End-Phase 'components' 'Komponenten installiert' }
 
@@ -493,9 +523,9 @@ if ($script:CurrentPhase -eq 'components') { End-Phase 'components' 'Komponenten
 # 12. Drivers
 # ---------------------------------------------------------------------------
 if ($selDrivers.Count -gt 0) { Set-Phase 'drivers' 'Treiber-Installation' }
-if ($selDrivers -contains 'JDBC') { Write-CliLog 'Installiere JDBC-Treiber ...'; Emit -Phase 'drivers' -Step 'JDBC' -State 'progress' -Title 'JDBC-Treiber'; Install-JdbcComponent -SourcePath $Config.Drivers['JDBC_SourcePath'] -LogCallback $logCb }
-if ($selDrivers -contains 'ODBC') { Write-CliLog 'Installiere ODBC-Treiber ...'; Emit -Phase 'drivers' -Step 'ODBC' -State 'progress' -Title 'ODBC-Treiber'; Install-OdbcComponent -SourcePath $Config.Drivers['ODBC_SourcePath'] -LogCallback $logCb }
-if ($selDrivers -contains 'DB2')  { Write-CliLog 'Installiere DB2-Treiber ...';  Emit -Phase 'drivers' -Step 'DB2' -State 'progress' -Title 'DB2-Treiber';   Install-Db2Component  -SourcePath $Config.Drivers['DB2_SourcePath']  -LogCallback $logCb }
+if ($selDrivers -contains 'JDBC') { Invoke-SetupStep -Context $setupState -Id 'drv-JDBC' -Name 'JDBC-Treiber' -Body { Emit -Phase 'drivers' -Step 'JDBC' -State 'progress' -Title 'JDBC-Treiber'; Install-JdbcComponent -SourcePath $Config.Drivers['JDBC_SourcePath'] -LogCallback $logCb } }
+if ($selDrivers -contains 'ODBC') { Invoke-SetupStep -Context $setupState -Id 'drv-ODBC' -Name 'ODBC-Treiber' -Body { Emit -Phase 'drivers' -Step 'ODBC' -State 'progress' -Title 'ODBC-Treiber'; Install-OdbcComponent -SourcePath $Config.Drivers['ODBC_SourcePath'] -LogCallback $logCb } }
+if ($selDrivers -contains 'DB2')  { Invoke-SetupStep -Context $setupState -Id 'drv-DB2' -Name 'DB2-Treiber' -Body { Emit -Phase 'drivers' -Step 'DB2' -State 'progress' -Title 'DB2-Treiber'; Install-Db2Component -SourcePath $Config.Drivers['DB2_SourcePath'] -LogCallback $logCb } }
 if ($script:CurrentPhase -eq 'drivers') { End-Phase 'drivers' 'Treiber installiert' }
 
 # ---------------------------------------------------------------------------
@@ -521,6 +551,8 @@ if ($SkipPostInstall) {
         -PostInstallScript    $Config.PostInstallScript `
         -BasePort             $Config.BasePort `
         -PortIncrement        $Config.PortIncrement `
+        -StatePath            $LogPath `
+        -Force:$Force `
         -LogCallback          $logCb
     End-Phase 'postinstall' 'PostInstall abgeschlossen'
     Write-CliLog 'PostInstall abgeschlossen.' 'OK'

@@ -973,6 +973,9 @@ $($worker.ToString())
         $snapChkJDBC         = ($null -ne $script:ChkJDBC -and $script:ChkJDBC.Checked)
         $snapChkODBC         = ($null -ne $script:ChkODBC -and $script:ChkODBC.Checked)
         $snapChkDB2          = ($null -ne $script:ChkDB2  -and $script:ChkDB2.Checked)
+        # Checkpoint/Resume: erledigte Phasen werden bei erneutem Lauf uebersprungen.
+        # $snapForce = $true wuerde alles erneut ausfuehren (derzeit immer Resume-by-default).
+        $snapForce           = ($null -ne $script:ChkForce -and $script:ChkForce.Checked)
 
         # --- PreInstall-Pruefungen (synchron im GUI-Thread) ---
         $preLayout = Get-DiskLayoutFromForm
@@ -1012,9 +1015,14 @@ $($worker.ToString())
                                          -InstanceName $snapInstance
 
                 Write-Log (Format-DiskLayoutSummary -SqlPaths $sqlPaths)
-                Write-Log 'Erstelle Verzeichnisse...'
-                $dirResults = New-SqlDirectories -SqlPaths $sqlPaths
-                foreach ($dr in $dirResults) { Write-Log "  $($dr.Status): $($dr.Pfad)" }
+
+                # Checkpoint/Resume: bereits erledigte Phasen werden bei erneutem Lauf uebersprungen.
+                $setupState = New-SetupState -InstanceName $snapInstance -Scope 'install' -Force:$snapForce -LogCallback $logSB
+
+                Invoke-SetupStep -Context $setupState -Id 'dirs' -Name 'Verzeichnisse anlegen' -Body {
+                    $dirResults = New-SqlDirectories -SqlPaths $sqlPaths
+                    foreach ($dr in $dirResults) { Write-Log "  $($dr.Status): $($dr.Pfad)" }
+                }
 
                 # Build PSCredential for service account if provided
                 $serviceCredential = $null
@@ -1023,17 +1031,34 @@ $($worker.ToString())
                     $serviceCredential = New-Object System.Management.Automation.PSCredential($snapAccount, $secPwd)
                 }
 
-                $installResult = Invoke-SqlInstallation `
-                    -SqlPaths          $sqlPaths `
-                    -Version           $snapVer `
-                    -Edition           $snapEdition `
-                    -InstanceName      $snapInstance `
-                    -Collation         $snapCollation `
-                    -ProductKey        $snapSerial `
-                    -ServiceCredential $serviceCredential `
-                    -InstallDrive      $snapLayout['InstallDrive'] `
-                    -InstallConfig     $snapConfig.InstallationConfig `
-                    -LogCallback       $logSB
+                if (Test-SetupStepDone -Context $setupState -Id 'install') {
+                    Write-Log 'Installation bereits erledigt (Checkpoint) - uebersprungen.'
+                    $installResult = [PSCustomObject]@{ Success = $true; Message = 'bereits installiert (Checkpoint).' }
+                }
+                else {
+                    # Durable: eine bereits vorhandene/erreichbare Instanz NICHT erneut installieren.
+                    $alreadyInstalled = $false
+                    try { $null = Connect-DbaInstance -SqlInstance $snapInstance -ErrorAction Stop; $alreadyInstalled = $true } catch { }
+                    if ($alreadyInstalled) {
+                        Write-Log "  Instanz '$snapInstance' ist bereits vorhanden - Installation uebersprungen."
+                        $installResult = [PSCustomObject]@{ Success = $true; Message = 'Instanz bereits vorhanden.' }
+                        Set-SetupStepDone -Context $setupState -Id 'install' -Message 'pre-existing'
+                    }
+                    else {
+                        $installResult = Invoke-SqlInstallation `
+                            -SqlPaths          $sqlPaths `
+                            -Version           $snapVer `
+                            -Edition           $snapEdition `
+                            -InstanceName      $snapInstance `
+                            -Collation         $snapCollation `
+                            -ProductKey        $snapSerial `
+                            -ServiceCredential $serviceCredential `
+                            -InstallDrive      $snapLayout['InstallDrive'] `
+                            -InstallConfig     $snapConfig.InstallationConfig `
+                            -LogCallback       $logSB
+                        if ($installResult.Success) { Set-SetupStepDone -Context $setupState -Id 'install' }
+                    }
+                }
 
                 if ($installResult.Success) {
                     # Wait for SQL Server to be ready before post-install
@@ -1071,57 +1096,61 @@ $($worker.ToString())
 
                     # Install optional components FIRST (before PostInstall sets TSM monitoring)
                     if ($snapChkSSAS) {
-                        Write-Log "Installiere SSAS..."
-                        Install-SsasComponent `
-                            -SourcePath   "$($snapLayout['InstallDrive']):\SQLSources\SQL$snapVer\SQL_Install" `
-                            -InstanceName $snapInstance `
-                            -Collation    $snapCollation `
-                            -LogCallback  $logSB
+                        Invoke-SetupStep -Context $setupState -Id 'comp-SSAS' -Name 'SSAS installieren' -Body {
+                            Install-SsasComponent `
+                                -SourcePath   "$($snapLayout['InstallDrive']):\SQLSources\SQL$snapVer\SQL_Install" `
+                                -InstanceName $snapInstance `
+                                -Collation    $snapCollation `
+                                -LogCallback  $logSB
+                        }
                     }
                     if ($snapChkSSRS) {
-                        Write-Log "Installiere SSRS..."
-                        # SSRS-Edition und ProductKey aus der gleichen Seriennummern-Logik wie SQL-Engine
-                        $ssrsEdition = if ($snapEdition) { $snapEdition } else { 'Developer' }
-                        $ssrsSplat = @{
-                            SourcePath   = "$($snapLayout['InstallDrive']):\SQLSources\SQL$snapVer\Reporting"
-                            InstanceName = $snapInstance
-                            Edition      = $ssrsEdition
-                            LogCallback  = $logSB
+                        Invoke-SetupStep -Context $setupState -Id 'comp-SSRS' -Name 'SSRS installieren' -Body {
+                            # SSRS-Edition und ProductKey aus der gleichen Seriennummern-Logik wie SQL-Engine
+                            $ssrsEdition = if ($snapEdition) { $snapEdition } else { 'Developer' }
+                            $ssrsSplat = @{
+                                SourcePath   = "$($snapLayout['InstallDrive']):\SQLSources\SQL$snapVer\Reporting"
+                                InstanceName = $snapInstance
+                                Edition      = $ssrsEdition
+                                LogCallback  = $logSB
+                            }
+                            if ($snapSerial -and $snapSerial -ne '') {
+                                $ssrsSplat['ProductKey'] = $snapSerial
+                            }
+                            Install-SsrsComponent @ssrsSplat
                         }
-                        if ($snapSerial -and $snapSerial -ne '') {
-                            $ssrsSplat['ProductKey'] = $snapSerial
-                        }
-                        Install-SsrsComponent @ssrsSplat
                     }
                     if ($snapChkTDP) {
-                        Write-Log "Installiere TDP..."
-                        Install-TdpComponent `
-                            -SourcePath  "$($snapLayout['InstallDrive']):\SQLSources\TDP" `
-                            -InstanceName $snapInstance `
-                            -LogCallback  $logSB
+                        Invoke-SetupStep -Context $setupState -Id 'comp-TDP' -Name 'TDP installieren' -Body {
+                            Install-TdpComponent `
+                                -SourcePath  "$($snapLayout['InstallDrive']):\SQLSources\TDP" `
+                                -InstanceName $snapInstance `
+                                -LogCallback  $logSB
+                        }
                     }
                     if ($snapChkSSMS) {
-                        Write-Log "Installiere SSMS..."
-                        Install-SsmsComponent `
-                            -SourcePath  "$($snapLayout['InstallDrive']):\SQLSources\SQL$snapVer\Management" `
-                            -LogCallback  $logSB
+                        Invoke-SetupStep -Context $setupState -Id 'comp-SSMS' -Name 'SSMS installieren' -Body {
+                            Install-SsmsComponent `
+                                -SourcePath  "$($snapLayout['InstallDrive']):\SQLSources\SQL$snapVer\Management" `
+                                -LogCallback  $logSB
+                        }
                     }
 
                     # Treiber-Installation
                     if ($snapChkJDBC) {
-                        Write-Log 'Installiere JDBC-Treiber...'
-                        Install-JdbcComponent -SourcePath $snapConfig.Drivers['JDBC_SourcePath'] `
-                                              -LogCallback $logSB
+                        Invoke-SetupStep -Context $setupState -Id 'drv-JDBC' -Name 'JDBC-Treiber' -Body {
+                            Install-JdbcComponent -SourcePath $snapConfig.Drivers['JDBC_SourcePath'] -LogCallback $logSB
+                        }
                     }
                     if ($snapChkODBC) {
-                        Write-Log 'Installiere ODBC-Treiber...'
-                        Install-OdbcComponent -SourcePath $snapConfig.Drivers['ODBC_SourcePath'] `
-                                              -LogCallback $logSB
+                        Invoke-SetupStep -Context $setupState -Id 'drv-ODBC' -Name 'ODBC-Treiber' -Body {
+                            Install-OdbcComponent -SourcePath $snapConfig.Drivers['ODBC_SourcePath'] -LogCallback $logSB
+                        }
                     }
                     if ($snapChkDB2) {
-                        Write-Log 'Installiere DB2-Treiber...'
-                        Install-Db2Component  -SourcePath $snapConfig.Drivers['DB2_SourcePath'] `
-                                              -LogCallback $logSB
+                        Invoke-SetupStep -Context $setupState -Id 'drv-DB2' -Name 'DB2-Treiber' -Body {
+                            Install-Db2Component -SourcePath $snapConfig.Drivers['DB2_SourcePath'] -LogCallback $logSB
+                        }
                     }
 
                     # PostInstall AFTER optional components + drivers
@@ -1139,6 +1168,7 @@ $($worker.ToString())
                                        -PostInstallScript $snapConfig.PostInstallScript `
                                        -BasePort          $snapConfig.BasePort `
                                        -PortIncrement     $snapConfig.PortIncrement `
+                                       -Force:$snapForce `
                                        -LogCallback       $logSB
                 }
 
@@ -1190,6 +1220,7 @@ $($worker.ToString())
             snapChkJDBC          = $snapChkJDBC
             snapChkODBC          = $snapChkODBC
             snapChkDB2           = $snapChkDB2
+            snapForce            = $snapForce
             snapMonitoring       = $snapMonitoring
             form           = $form
             script_LogBox      = $script:LogBox
