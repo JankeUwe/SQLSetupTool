@@ -196,10 +196,18 @@ function Invoke-PostInstall {
             log "  OK: TempDB konfiguriert (CPU-basierte Dateianzahl, Groesse aus Konfiguration)"
         }
 
-        # ===== 5. Recovery-Modell =====
-        Invoke-Step '05-Recovery' 'Recovery-Modell FULL (system, msdb)' {
-            Invoke-sqmSetDatabaseRecoveryMode -SqlInstance $SqlInstance -Database 'system', 'msdb' -RecoveryMode 'FULL' -ErrorAction Stop
-            log "  OK: Recovery-Modell = FULL (system, msdb)"
+        # ===== 5. Recovery-Modell (msdb + model auf FULL) =====
+        # WICHTIG: Invoke-sqmSetDatabaseRecoveryMode schliesst System-DBs bewusst aus (nur User-DBs,
+        # ExcludeSystem hart gesetzt) - msdb wuerde damit NICHT umgestellt. Daher hier direkt
+        # Set-DbaDbRecoveryModel, das System-DBs kann.
+        #   msdb  = FULL : hilfreich in AlwaysOn-Umgebungen.
+        #   model = FULL : neue Benutzerdatenbanken sind dadurch sofort AlwaysOn-faehig (Default FULL).
+        # master/tempdb bleiben unveraendert - sie sind systembedingt immer SIMPLE.
+        Invoke-Step '05-Recovery' 'Recovery-Modell FULL (msdb, model)' {
+            foreach ($sysDb in 'msdb', 'model') {
+                Set-DbaDbRecoveryModel -SqlInstance $SqlInstance -Database $sysDb -RecoveryModel Full -Confirm:$false -ErrorAction Stop | Out-Null
+                log "  OK: Recovery-Modell '$sysDb' = FULL"
+            }
         }
 
         # ===== 6. SQL Browser Service deaktivieren =====
