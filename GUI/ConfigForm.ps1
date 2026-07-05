@@ -526,7 +526,7 @@ function Show-ConfigForm {
             if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
                 $tbRef.Text = $dlg.SelectedPath
             }
-        })
+        }.GetNewClosure())
         return $b
     }
 
@@ -558,6 +558,79 @@ function Show-ConfigForm {
                 })
             }
             $_form.Invoke([System.Windows.Forms.MethodInvoker]$_doneCb)
+        }) | Out-Null
+        $ps.BeginInvoke() | Out-Null
+    }
+
+    function _StartSaveStructureJob {
+        # Legt beim Speichern die SourceShare-Struktur im Hintergrund an. Ist der Pfad
+        # nicht erreichbar (Netzwerkfreigabe down, kein Zugriff, ...), wird stattdessen
+        # lokal aufgebaut und als ZIP verpackt (Ziel-Server-Export-Felder aus Tab 2).
+        # Laeuft komplett unabhaengig vom Formular weiter (kein $form.Invoke noetig, da
+        # keine UI aktualisiert wird) - Ergebnis nur in configform-save.log.
+        param(
+            [string]$SourceShare,
+            [string]$Versions,
+            [string]$ZipBasePath,
+            [string]$ZipDest,
+            [string]$ScriptDir
+        )
+        $rs = [runspacefactory]::CreateRunspace()
+        $rs.ApartmentState = 'STA'
+        $rs.ThreadOptions  = 'ReuseThread'
+        $rs.Open()
+        $rs.SessionStateProxy.SetVariable('_sourceShare', $SourceShare)
+        $rs.SessionStateProxy.SetVariable('_versions',    $Versions)
+        $rs.SessionStateProxy.SetVariable('_zipBase',     $ZipBasePath)
+        $rs.SessionStateProxy.SetVariable('_zipDest',     $ZipDest)
+        $rs.SessionStateProxy.SetVariable('_scriptDir',   $ScriptDir)
+        $rs.SessionStateProxy.SetVariable('_logDir',      (Join-Path $env:ProgramData 'SQLSetupTool'))
+
+        $ps = [powershell]::Create()
+        $ps.Runspace = $rs
+        $ps.AddScript({
+            function _Log([string]$Message) {
+                try {
+                    if (-not (Test-Path $_logDir)) { New-Item -ItemType Directory -Path $_logDir -Force | Out-Null }
+                    $line = '{0} {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
+                    Add-Content -LiteralPath (Join-Path $_logDir 'configform-save.log') -Value $line -Encoding UTF8
+                } catch {}
+            }
+
+            $versionList = $_versions -split '\s*,\s*' | Where-Object { $_ -ne '' }
+
+            # Erreichbarkeit pruefen: New-Item auf den Basispfad selbst ist der
+            # verlaesslichste Test (Test-Path liefert bei UNC-Timeouts inkonsistente
+            # Ergebnisse) - schlaegt bei unerreichbarer Freigabe/fehlendem Zugriff fehl.
+            $reachable = $false
+            try {
+                New-Item -ItemType Directory -Path $_sourceShare -Force -ErrorAction Stop | Out-Null
+                $reachable = $true
+            } catch {
+                _Log "SourceShare '$_sourceShare' nicht erreichbar ($($_.Exception.Message)) - ZIP-Fallback."
+            }
+
+            if ($reachable) {
+                try {
+                    $structScript = Join-Path $_scriptDir 'Scripts\New-SqlSourceStructure.ps1'
+                    & $structScript -BasePath $_sourceShare -Versions $versionList -Force *> $null
+                    _Log "Struktur angelegt unter '$_sourceShare'."
+                } catch {
+                    _Log "Fehler beim Anlegen der Struktur unter '$_sourceShare': $($_.Exception.Message)"
+                }
+            } else {
+                try {
+                    $zipBase = if ($_zipBase -ne '') { $_zipBase } else { Join-Path $env:TEMP 'SQLSources-Fallback' }
+                    $zipDest = if ($_zipDest -ne '') { $_zipDest } else { 'C:\Temp\SQLSources-Save.zip' }
+                    $fitsScript = Join-Path $_scriptDir 'Scripts\New-SqlSourceStructure-FiTS.ps1'
+                    & $fitsScript -BasePath $zipBase -Versions $versionList -Force *> $null
+                    if (Test-Path $zipDest) { Remove-Item $zipDest -Force }
+                    Compress-Archive -Path "$zipBase\*" -DestinationPath $zipDest -ErrorAction Stop
+                    _Log "ZIP-Fallback erstellt: '$zipDest' (aus '$zipBase')."
+                } catch {
+                    _Log "ZIP-Fallback fehlgeschlagen: $($_.Exception.Message)"
+                }
+            }
         }) | Out-Null
         $ps.BeginInvoke() | Out-Null
     }
@@ -968,6 +1041,15 @@ function Show-ConfigForm {
             _UpdateIni -IniPath $IniPath -Section 'PreInstall' -Key 'Format64kCheck'  -Value $defaultsConfig.Format64kCheck.ToString().ToLower()
             _UpdateIni -IniPath $IniPath -Section 'PreInstall' -Key 'SnapshotEnabled' -Value $defaultsConfig.SnapshotEnabled.ToString().ToLower()
             _UpdateIni -IniPath $IniPath -Section 'PreInstall' -Key 'HpuCheck'        -Value $defaultsConfig.HpuCheck.ToString().ToLower()
+
+            # --- Definierte SourceShare-Struktur im Hintergrund anlegen. ---
+            # Ist der Pfad (z.B. UNC-Freigabe) nicht erreichbar: ZIP-Fallback ueber die
+            # Ziel-Server-Export-Felder aus Tab 2. Laeuft unsichtbar weiter, auch nachdem
+            # der Dialog bereits geschlossen ist - Ergebnis nur in configform-save.log.
+            if ($pathConfig.SourceShare -ne '') {
+                _StartSaveStructureJob -SourceShare $pathConfig.SourceShare -Versions $pathConfig.Versionen `
+                    -ZipBasePath $tbFiTSPath.Text.Trim() -ZipDest $tbZipPath.Text.Trim() -ScriptDir $scriptDir
+            }
 
             $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
             $form.Close()

@@ -81,6 +81,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Bei Aufruf ueber 'powershell.exe -File ... -Versions 2019,2022,2025' wird der
+# Wert NICHT vom PowerShell-Parser gesplittet (anders als bei direktem Skriptaufruf
+# oder -Command) - er kommt als EIN einzelnes Array-Element mit Kommas an. Ohne
+# diese Normalisierung entsteht z.B. der fehlerhafte Ordner "SQL2019,2022,2025".
+if ($Versions.Count -gt 0) {
+    $Versions = @($Versions | ForEach-Object { $_ -split '\s*,\s*' } | Where-Object { $_ -ne '' })
+}
+
 # FI-TS W:\-Pfad fuer -UpdateIni (immer der echte Zielpfad, unabhaengig von -BasePath)
 $FiTSBasePath = 'W:\75084-Datenbanken\MSSQL\SQLSources'
 
