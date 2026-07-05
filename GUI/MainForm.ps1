@@ -853,22 +853,18 @@ Get-ChildItem '$modulesDir' -Filter '*.psm1' | ForEach-Object {
 
                 $logSB = { param($msg) Write-Log $msg }
 
-                # v5 Funktionsname: Copy-SqlSource (nicht Copy-SqlSources)
-                $result = Copy-SqlSource -SourceShare  $snapConfig.SourceShare `
-                                         -Version      $snapVer `
-                                         -InstallDrive $snapLayout['InstallDrive'] `
-                                         -LogCallback  $logSB
-
-                if (-not $result.Success) {
-                    $errMsg = "Fehler beim Kopieren der SQL-Quellen:`n$($result.Message)"
-                    $form.Invoke([System.Windows.Forms.MethodInvoker]{
-                        [System.Windows.Forms.MessageBox]::Show(
-                            $errMsg, 'Fehler',
-                            [System.Windows.Forms.MessageBoxButtons]::OK,
-                            [System.Windows.Forms.MessageBoxIcon]::Error
-                        ) | Out-Null
-                    })
-                }
+                # v5 Funktionsname: Copy-SqlSource (nicht Copy-SqlSources).
+                # Copy-SqlSource/Invoke-Robocopy geben bei Erfolg NICHTS zurueck und werfen bei
+                # Fehler eine Exception (siehe CopySource.psm1) - es gibt kein .Success/.Message-
+                # Rueckgabeobjekt. Der vorherige "if (-not $result.Success)"-Check griff auf $null
+                # zu und loeste dadurch unter Set-StrictMode IMMER eine PropertyNotFoundException
+                # aus, selbst bei erfolgreichem Kopiervorgang. Ein echter Robocopy-Fehler wird
+                # durch die throw in Invoke-Robocopy ausgeloest und vom aeusseren Error-Handling
+                # des Worker-Threads abgefangen.
+                Copy-SqlSource -SourceShare  $snapConfig.SourceShare `
+                                -Version      $snapVer `
+                                -InstallDrive $snapLayout['InstallDrive'] `
+                                -LogCallback  $logSB
 
                 # SSRS/SSAS/SSMS sind Unterordner von SQL$Version - Copy-SqlSource /E kopiert alle mit
                 # Kein separater Copy-ComponentSource Aufruf fuer diese Komponenten noetig
@@ -996,6 +992,43 @@ $($worker.ToString())
             $snapMonitoring = $script:CbMonitoring.SelectedIndex
         }
 
+        # --- Neue Domain gefunden? Profil anbieten (analog Start-SqlSetup.ps1 CLI-Prompt) ---
+        if ($Config.Domain -and -not $Config.HasDomainProfile) {
+            $dpResult = [System.Windows.Forms.MessageBox]::Show(
+                "Fuer die Domain '$($Config.Domain)' existiert noch kein Domain-Profil`n" +
+                "(Config\domains\$($Config.Domain).ini).`n`n" +
+                "Jetzt als neues Profil anlegen?`n`n" +
+                "Ja        = mit STANDARD-Werten speichern`n" +
+                "Nein      = mit den fuer DIESEN Lauf gewaehlten Werten speichern`n" +
+                "            (Collation: $snapCollation, Laufwerke, Monitoring)`n" +
+                "Abbrechen = nicht speichern",
+                'Neue Domain erkannt',
+                [System.Windows.Forms.MessageBoxButtons]::YesNoCancel,
+                [System.Windows.Forms.MessageBoxIcon]::Question
+            )
+            if ($dpResult -ne [System.Windows.Forms.DialogResult]::Cancel) {
+                if ($dpResult -eq [System.Windows.Forms.DialogResult]::Yes) {
+                    $dpCollation  = $Config.DefaultCollation
+                    $dpDiskLayout = $Config.DiskLayout
+                    $dpMonitoring = $Config.MonitoringDefault
+                } else {
+                    $dpCollation  = $snapCollation
+                    $dpDiskLayout = $snapLayout
+                    $dpMonitoring = $snapMonitoring
+                }
+                $dpPath = Save-DomainProfile -ConfigDir $Config.ConfigDir -Domain $Config.Domain `
+                    -Collation $dpCollation -SysadminGroups $Config.SysadminGroups `
+                    -MonitoringType $dpMonitoring -DiskLayout $dpDiskLayout -SQLSourcesPath $Config.SQLSourcesPath
+                Write-Log "Domain-Profil angelegt: $dpPath"
+                $Config.HasDomainProfile = $true
+                [System.Windows.Forms.MessageBox]::Show(
+                    "Domain-Profil angelegt:`n$dpPath", 'Domain-Profil gespeichert',
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Information
+                ) | Out-Null
+            }
+        }
+
         $serialKey  = "SQL${snapVer}_${snapEdition}"
         $snapSerial = if ($snapConfig.SerialNumbers.Contains($serialKey)) {
                           $snapConfig.SerialNumbers[$serialKey]
@@ -1033,15 +1066,18 @@ $($worker.ToString())
 
                 if (Test-SetupStepDone -Context $setupState -Id 'install') {
                     Write-Log 'Installation bereits erledigt (Checkpoint) - uebersprungen.'
-                    $installResult = [PSCustomObject]@{ Success = $true; Message = 'bereits installiert (Checkpoint).' }
+                    # Feldnamen Successful/ExitMessage angeglichen an das echte Rueckgabeobjekt von
+                    # Install-DbaInstance (siehe Invoke-SqlInstallation) - nicht Success/Message,
+                    # das es dort nicht gibt (PropertyNotFoundException unter Set-StrictMode).
+                    $installResult = [PSCustomObject]@{ Successful = $true; ExitMessage = 'bereits installiert (Checkpoint).' }
                 }
                 else {
                     # Durable: eine bereits vorhandene/erreichbare Instanz NICHT erneut installieren.
                     $alreadyInstalled = $false
-                    try { $null = Connect-DbaInstance -SqlInstance $snapInstance -ErrorAction Stop; $alreadyInstalled = $true } catch { }
+                    try { $null = Connect-DbaInstance -SqlInstance (Get-SqlConnectionInstance -InstanceName $snapInstance) -ErrorAction Stop; $alreadyInstalled = $true } catch { }
                     if ($alreadyInstalled) {
                         Write-Log "  Instanz '$snapInstance' ist bereits vorhanden - Installation uebersprungen."
-                        $installResult = [PSCustomObject]@{ Success = $true; Message = 'Instanz bereits vorhanden.' }
+                        $installResult = [PSCustomObject]@{ Successful = $true; ExitMessage = 'Instanz bereits vorhanden.' }
                         Set-SetupStepDone -Context $setupState -Id 'install' -Message 'pre-existing'
                     }
                     else {
@@ -1056,11 +1092,11 @@ $($worker.ToString())
                             -InstallDrive      $snapLayout['InstallDrive'] `
                             -InstallConfig     $snapConfig.InstallationConfig `
                             -LogCallback       $logSB
-                        if ($installResult.Success) { Set-SetupStepDone -Context $setupState -Id 'install' }
+                        if ($installResult.Successful) { Set-SetupStepDone -Context $setupState -Id 'install' }
                     }
                 }
 
-                if ($installResult.Success) {
+                if ($installResult.Successful) {
                     # Wait for SQL Server to be ready before post-install
                     Write-Log "Pruefe SQL Server Readiness..."
                     $maxTries = 15
@@ -1068,7 +1104,7 @@ $($worker.ToString())
                     $sqlReady = $false
                     while ($tryCount -lt $maxTries -and -not $sqlReady) {
                         try {
-                            $null = Connect-DbaInstance -SqlInstance $snapInstance -ErrorAction Stop
+                            $null = Connect-DbaInstance -SqlInstance (Get-SqlConnectionInstance -InstanceName $snapInstance) -ErrorAction Stop
                             $sqlReady = $true
                             Write-Log "  OK: SQL Server $snapInstance ist bereit"
                         }
@@ -1172,9 +1208,9 @@ $($worker.ToString())
                                        -LogCallback       $logSB
                 }
 
-                $finalMsg  = if ($installResult.Success) { 'Installation abgeschlossen.' } else { 'Fehler bei der Installation.' }
-                $finalBody = $finalMsg + "`n`n" + $installResult.Message
-                $finalIcon = if ($installResult.Success) {
+                $finalMsg  = if ($installResult.Successful) { 'Installation abgeschlossen.' } else { 'Fehler bei der Installation.' }
+                $finalBody = $finalMsg + "`n`n" + $installResult.ExitMessage
+                $finalIcon = if ($installResult.Successful) {
                     [System.Windows.Forms.MessageBoxIcon]::Information
                 } else {
                     [System.Windows.Forms.MessageBoxIcon]::Error
@@ -1189,7 +1225,7 @@ $($worker.ToString())
                 })
             }
             finally {
-                $statusText = if ($installResult -and $installResult.Success) {
+                $statusText = if ($installResult -and $installResult.Successful) {
                     'Installation abgeschlossen.'
                 } else {
                     'Fehler - siehe Protokoll.'

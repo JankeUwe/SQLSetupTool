@@ -260,6 +260,10 @@ $selVersion   = if ($Version)      { $Version }      else { $Config.DefaultVersi
 $selEdition   = if ($Edition)      { $Edition }      else { $Config.DefaultEdition }
 $selInstance  = if ($InstanceName) { $InstanceName } else { $Config.DefaultInstanceName }
 $selCollation = if ($Collation)    { $Collation }    else { $Config.DefaultCollation }
+# $selInstance ist ein blosser Instanzname (z.B. "MSSQLServer"/"INST01") - fuer
+# Connect-DbaInstance & Co. wird der echte Verbindungsstring ("Computer" oder
+# "Computer\Instanz") gebraucht, siehe Get-SqlConnectionInstance (DiskLayout.psm1).
+$selConnInstance = Get-SqlConnectionInstance -InstanceName $selInstance
 $selMonitoring = if ($MonitoringType -ge 0) { $MonitoringType } else { $Config.MonitoringDefault }
 
 # Validate version is available in config
@@ -284,6 +288,30 @@ if ($DataDrive)    { $diskLayout['DataDrive']    = $DataDrive.TrimEnd(':').Trim(
 if ($LogDrive)     { $diskLayout['LogDrive']     = $LogDrive.TrimEnd(':').Trim() }
 if ($TempDrive)    { $diskLayout['TempDrive']    = $TempDrive.TrimEnd(':').Trim() }
 if ($BackupDrive)  { $diskLayout['BackupDrive']  = $BackupDrive.TrimEnd(':').Trim() }
+
+# ---------------------------------------------------------------------------
+# 4a. Neue Domain gefunden? Profil anbieten (nur interaktiv, wie im GUI).
+# ---------------------------------------------------------------------------
+if (-not $NonInteractive -and $Config.Domain -and -not $Config.HasDomainProfile) {
+    Write-CliLog "Domain '$($Config.Domain)' hat noch kein eigenes Profil (Config\domains\$($Config.Domain).ini) - es werden Standardwerte verwendet." 'WARNING'
+    $dpAnswer = Read-Host "Jetzt als neues Domain-Profil anlegen? (j/n)"
+    if ($dpAnswer -match '^[jJyY]') {
+        $dpMode = Read-Host "Mit (S)tandard-Werten oder (A)ktuellen Werten dieses Laufs speichern? [S/A]"
+        if ($dpMode -match '^[aA]') {
+            $dpCollation = $selCollation
+            $dpDiskLayout = $diskLayout
+            $dpMonitoring = $selMonitoring
+        } else {
+            $dpCollation = $Config.DefaultCollation
+            $dpDiskLayout = $Config.DiskLayout
+            $dpMonitoring = $Config.MonitoringDefault
+        }
+        $dpPath = Save-DomainProfile -ConfigDir $Config.ConfigDir -Domain $Config.Domain `
+            -Collation $dpCollation -SysadminGroups $Config.SysadminGroups `
+            -MonitoringType $dpMonitoring -DiskLayout $dpDiskLayout -SQLSourcesPath $Config.SQLSourcesPath
+        Write-CliLog "Domain-Profil angelegt: $dpPath" 'OK'
+    }
+}
 
 # Service credential
 $serviceCredential = $null
@@ -439,7 +467,7 @@ if (Test-SetupStepDone -Context $setupState -Id 'install') {
 else {
     # Durable: eine bereits vorhandene/erreichbare Instanz NICHT erneut installieren.
     $alreadyInstalled = $false
-    try { $null = Connect-DbaInstance -SqlInstance $selInstance -ErrorAction Stop; $alreadyInstalled = $true } catch { }
+    try { $null = Connect-DbaInstance -SqlInstance $selConnInstance -ErrorAction Stop; $alreadyInstalled = $true } catch { }
     if ($alreadyInstalled) {
         Write-CliLog "Instanz '$selInstance' ist bereits vorhanden/erreichbar - Installation uebersprungen." 'OK'
         Set-SetupStepDone -Context $setupState -Id 'install' -Message 'pre-existing'
@@ -458,14 +486,16 @@ else {
             -InstallConfig     $Config.InstallationConfig `
             -LogCallback       $logCb
 
-        if (-not $installResult.Success) {
-            Emit -Phase 'install' -Step 'install' -State 'error' -Title 'Installation fehlgeschlagen' -Detail $installResult.Message
+        # Install-DbaInstance (dbatools) liefert "Successful"/"ExitMessage", nicht "Success"/"Message" -
+        # siehe OUTPUTS in Get-Help Install-DbaInstance -Full.
+        if (-not $installResult.Successful) {
+            Emit -Phase 'install' -Step 'install' -State 'error' -Title 'Installation fehlgeschlagen' -Detail $installResult.ExitMessage
             if ($script:EventLog) { New-sqmSetupReport -EventPath $script:EventLog -OutputPath $script:ReportPath -Server $env:COMPUTERNAME | Out-Null }
-            Write-CliLog "Installation fehlgeschlagen: $($installResult.Message)" 'ERROR'
+            Write-CliLog "Installation fehlgeschlagen: $($installResult.ExitMessage)" 'ERROR'
             exit 3
         }
         Set-SetupStepDone -Context $setupState -Id 'install'
-        Write-CliLog "Installation abgeschlossen: $($installResult.Message)" 'OK'
+        Write-CliLog "Installation abgeschlossen: $($installResult.ExitMessage)" 'OK'
     }
 }
 End-Phase 'install' 'Installation abgeschlossen'
@@ -474,7 +504,7 @@ End-Phase 'install' 'Installation abgeschlossen'
 Write-CliLog 'Pruefe SQL Server Readiness ...'
 $sqlReady = $false
 for ($try = 1; $try -le 15 -and -not $sqlReady; $try++) {
-    try { $null = Connect-DbaInstance -SqlInstance $selInstance -ErrorAction Stop; $sqlReady = $true }
+    try { $null = Connect-DbaInstance -SqlInstance $selConnInstance -ErrorAction Stop; $sqlReady = $true }
     catch { Start-Sleep -Seconds 2 }
 }
 if (-not $sqlReady) { Write-CliLog "SQL Server $selInstance nach 30s nicht erreichbar." 'ERROR'; exit 3 }

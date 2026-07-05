@@ -371,6 +371,17 @@ namespace SqlSetupTool
         [Description("AD-Gruppenmitgliedschaft fuer HPU (HP Update) pruefen. Bei Nicht-Mitgliedschaft wird die Installation blockiert. Nur in FI-TS-Umgebungen aktivieren.")]
         public bool HpuCheck { get; set; }
 
+        // --- 4 - TempDB ---
+        [Category("4 - TempDB")]
+        [DisplayName("TempDbFileCount")]
+        [Description("Anzahl TempDB-Datendateien. Wird nur exakt verwendet wenn TempDbFileCountFixed = true - sonst nur Setup-Startwert, PostInstall waehlt CPU-basiert 4-8 Dateien.")]
+        public int TempDbFileCount { get; set; }
+
+        [Category("4 - TempDB")]
+        [DisplayName("TempDbFileCountFixed")]
+        [Description("true = TempDbFileCount IMMER exakt verwenden, auch nach PostInstall (z.B. wenn ein Kunde eine bestimmte Anzahl vorschreibt). false (Standard) = PostInstall waehlt die Anzahl automatisch anhand der CPU-Kerne (4-8, Microsoft-Empfehlung).")]
+        public bool TempDbFileCountFixed { get; set; }
+
         public SqlDefaultsConfig()
         {
             DefaultVersion      = "2022";
@@ -383,6 +394,8 @@ namespace SqlSetupTool
             Format64kCheck      = true;
             SnapshotEnabled     = false;
             HpuCheck            = false;
+            TempDbFileCount      = 2;
+            TempDbFileCountFixed = false;
         }
     }
 }
@@ -530,6 +543,35 @@ function Show-ConfigForm {
         return $b
     }
 
+    # Fuer ZIP-Zielpfad-Felder: SaveFileDialog statt FolderBrowserDialog, damit immer
+    # ein Dateiname mit .zip-Endung gewaehlt wird (nicht nur ein Ordner - siehe
+    # configform-save.log-Vorfall, bei dem ZIP-Ziel versehentlich = BasePath-Ordner war
+    # und Remove-Item -Force dadurch den kompletten Ordner geloescht hat).
+    function _BrowseZipBtn {
+        param($P, $X, $Y, $Tb)
+        $b = _Btn -P $P -T '...' -X $X -Y $Y -W 30 -H 24
+        $tbRef = $Tb
+        $b.Add_Click({
+            $dlg = New-Object System.Windows.Forms.SaveFileDialog
+            $dlg.Filter = 'ZIP-Dateien (*.zip)|*.zip'
+            $dlg.DefaultExt = 'zip'
+            $dlg.AddExtension = $true
+            $dlg.OverwritePrompt = $true
+            if ($tbRef.Text -ne '') {
+                $dir = Split-Path $tbRef.Text -Parent -ErrorAction SilentlyContinue
+                if ($dir -and (Test-Path $dir -ErrorAction SilentlyContinue)) {
+                    $dlg.InitialDirectory = $dir
+                }
+                $name = Split-Path $tbRef.Text -Leaf -ErrorAction SilentlyContinue
+                if ($name) { $dlg.FileName = $name }
+            }
+            if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+                $tbRef.Text = $dlg.FileName
+            }
+        }.GetNewClosure())
+        return $b
+    }
+
     function _StartBgScript {
         param(
             [System.Windows.Forms.Form]$Form,
@@ -622,11 +664,26 @@ function Show-ConfigForm {
                 try {
                     $zipBase = if ($_zipBase -ne '') { $_zipBase } else { Join-Path $env:TEMP 'SQLSources-Fallback' }
                     $zipDest = if ($_zipDest -ne '') { $_zipDest } else { 'C:\Temp\SQLSources-Save.zip' }
-                    $fitsScript = Join-Path $_scriptDir 'Scripts\New-SqlSourceStructure-FiTS.ps1'
-                    & $fitsScript -BasePath $zipBase -Versions $versionList -Force *> $null
-                    if (Test-Path $zipDest) { Remove-Item $zipDest -Force }
-                    Compress-Archive -Path "$zipBase\*" -DestinationPath $zipDest -ErrorAction Stop
-                    _Log "ZIP-Fallback erstellt: '$zipDest' (aus '$zipBase')."
+
+                    # Sicherheitscheck (siehe _BrowseZipBtn/btnFiTS-Handler): ZIP-Ziel darf
+                    # nicht gleich BasePath sein und muss eine .zip-Datei sein, sonst loescht
+                    # 'Remove-Item -Force' unten den kompletten BasePath-Ordner rekursiv.
+                    $zipBaseFull = $null
+                    try { $zipBaseFull = [System.IO.Path]::GetFullPath($zipBase) } catch {}
+                    $zipDestFull = $null
+                    try { $zipDestFull = [System.IO.Path]::GetFullPath($zipDest) } catch {}
+                    $zipDestIsFolder   = (Test-Path -LiteralPath $zipDest -PathType Container -ErrorAction SilentlyContinue)
+                    $zipDestSameAsBase = ($zipBaseFull -and $zipDestFull -and $zipBaseFull -eq $zipDestFull)
+
+                    if ($zipDestIsFolder -or $zipDestSameAsBase -or ($zipDest -notmatch '\.zip$')) {
+                        _Log "ZIP-Fallback abgebrochen: ZIP-Ziel '$zipDest' ist ungueltig (Ordner oder identisch mit BasePath '$zipBase')."
+                    } else {
+                        $fitsScript = Join-Path $_scriptDir 'Scripts\New-SqlSourceStructure-FiTS.ps1'
+                        & $fitsScript -BasePath $zipBase -Versions $versionList -Force *> $null
+                        if (Test-Path $zipDest) { Remove-Item $zipDest -Force }
+                        Compress-Archive -Path "$zipBase\*" -DestinationPath $zipDest -ErrorAction Stop
+                        _Log "ZIP-Fallback erstellt: '$zipDest' (aus '$zipBase')."
+                    }
                 } catch {
                     _Log "ZIP-Fallback fehlgeschlagen: $($_.Exception.Message)"
                 }
@@ -768,17 +825,22 @@ function Show-ConfigForm {
     $btnStd   = _Btn -P $gbStd -T 'Struktur anlegen' -X 635 -Y 84 -W 145
 
     # --- Ziel-Server-Export ---
-    # BasePath wird aus Domain-Profil vorbelegt.
+    # BasePath wird primaer aus dem zuletzt gespeicherten Wert ([FiTSExport] BasePath in
+    # settings.ini) vorbelegt, sonst aus dem Domain-Profil. Wird bei "Als ZIP generieren"
+    # automatisch aktualisiert, damit der Pfad nicht bei jedem Start neu eingetragen werden muss.
     # GroupBox-Hoehe: 148 (mit Hinweis-Label) damit nichts abgeschnitten wird.
+    $fitsBaseDefault = _IniVal 'FiTSExport' 'BasePath' ''
+    if ($fitsBaseDefault -eq '') { $fitsBaseDefault = $zielBasePath }
+
     $gbFiTS = _Gb -P $tab2 -T 'Ziel-Server-Export (lokal generieren + als ZIP uebertragen)' -X 5 -Y 130 -W 815 -H 148
     _Lbl -P $gbFiTS -T 'BasePath:' -X 10 -Y 24 -W 75
-    $tbFiTSPath = _Tb -P $gbFiTS -X 90 -Y 22 -W 590 -Def $zielBasePath
+    $tbFiTSPath = _Tb -P $gbFiTS -X 90 -Y 22 -W 590 -Def $fitsBaseDefault
     _BrowseBtn -P $gbFiTS -X 685 -Y 22 -Tb $tbFiTSPath | Out-Null
     _Lbl -P $gbFiTS -T 'Versionen:' -X 10 -Y 56 -W 75
     $tbFiTSVer = _Tb -P $gbFiTS -X 90 -Y 54 -W 220 -Def (_IniVal 'Versions' 'Available' '2019,2022,2025')
     _Lbl -P $gbFiTS -T 'ZIP-Ziel:' -X 10 -Y 88 -W 75
-    $tbZipPath = _Tb -P $gbFiTS -X 90 -Y 86 -W 590 -Def 'C:\Temp\SQLSources-Ziel.zip'
-    _BrowseBtn -P $gbFiTS -X 685 -Y 86 -Tb $tbZipPath | Out-Null
+    $tbZipPath = _Tb -P $gbFiTS -X 90 -Y 86 -W 590 -Def (_IniVal 'FiTSExport' 'ZipDest' 'C:\Temp\SQLSources-Ziel.zip')
+    _BrowseZipBtn -P $gbFiTS -X 685 -Y 86 -Tb $tbZipPath | Out-Null
     $btnFiTS = _Btn -P $gbFiTS -T 'Als ZIP generieren' -X 715 -Y 52 -W 90 -H 26
 
     # Hinweis-Label INNERHALB der GroupBox (nicht auf dem Tab - wuerde sonst von GroupBox ueberdeckt)
@@ -787,7 +849,7 @@ function Show-ConfigForm {
     $lblZielHint.Location  = New-Object System.Drawing.Point(10, 122)
     $lblZielHint.Size      = New-Object System.Drawing.Size(790, 18)
     $lblZielHint.ForeColor = [System.Drawing.Color]::DarkOrange
-    $lblZielHint.Visible   = ($zielBasePath -eq '')
+    $lblZielHint.Visible   = ($fitsBaseDefault -eq '')
     $gbFiTS.Controls.Add($lblZielHint)
 
     # Hint ausblenden sobald etwas eingetragen
@@ -833,6 +895,8 @@ function Show-ConfigForm {
     $defaultsConfig.Format64kCheck     = ((_IniVal 'PreInstall' 'Format64kCheck' 'true') -ne 'false')
     $defaultsConfig.SnapshotEnabled    = ((_IniVal 'PreInstall' 'SnapshotEnabled') -eq 'true')
     $defaultsConfig.HpuCheck           = ((_IniVal 'PreInstall' 'HpuCheck') -eq 'true')
+    $defaultsConfig.TempDbFileCount      = [int](_IniVal 'Installation' 'TempDbFileCount' '2')
+    $defaultsConfig.TempDbFileCountFixed = ((_IniVal 'Installation' 'TempDbFileCountFixed') -eq 'true')
 
     $propGrid3                = New-Object System.Windows.Forms.PropertyGrid
     $propGrid3.Dock           = 'Fill'
@@ -917,6 +981,34 @@ function Show-ConfigForm {
                 [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
             return
         }
+
+        # Sicherheitscheck: ZIP-Ziel darf kein Ordner sein und nicht mit BasePath
+        # zusammenfallen. Sonst loescht 'Remove-Item $zipDest -Force' (siehe unten)
+        # rekursiv den kompletten frisch angelegten BasePath-Ordner, bevor
+        # Compress-Archive ueberhaupt zum Zug kommt (-Force loescht bei
+        # Remove-Item auch nicht-leere Ordner ohne Rueckfrage - kein -Recurse noetig).
+        $fitsBaseFull = $null
+        try { $fitsBaseFull = [System.IO.Path]::GetFullPath($fitsBase) } catch {}
+        $zipDestFull = $null
+        try { $zipDestFull = [System.IO.Path]::GetFullPath($zipDest) } catch {}
+
+        $zipDestIsFolder = (Test-Path -LiteralPath $zipDest -PathType Container -ErrorAction SilentlyContinue)
+        $zipDestSameAsBase = ($fitsBaseFull -and $zipDestFull -and $fitsBaseFull -eq $zipDestFull)
+
+        if ($zipDestIsFolder -or $zipDestSameAsBase -or ($zipDest -notmatch '\.zip$')) {
+            [System.Windows.Forms.MessageBox]::Show(
+                "ZIP-Ziel ist ungueltig: '$zipDest'`n`n" +
+                "Das ZIP-Ziel muss eine Datei mit .zip-Endung sein und darf nicht der BasePath-Ordner selbst sein.`n" +
+                "Abgebrochen, um versehentliches Loeschen des BasePath-Ordners zu verhindern.",
+                'Fehler', [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+            return
+        }
+
+        # BasePath/ZIP-Ziel merken, damit sie beim naechsten Start nicht erneut
+        # eingetragen werden muessen (siehe [FiTSExport] in settings.ini).
+        _UpdateIni -IniPath $IniPath -Section 'FiTSExport' -Key 'BasePath' -Value $fitsBase
+        _UpdateIni -IniPath $IniPath -Section 'FiTSExport' -Key 'ZipDest'  -Value $zipDest
 
         $cfgLogBox.Clear()
         $btnStd.Enabled  = $false
@@ -1041,6 +1133,9 @@ function Show-ConfigForm {
             _UpdateIni -IniPath $IniPath -Section 'PreInstall' -Key 'Format64kCheck'  -Value $defaultsConfig.Format64kCheck.ToString().ToLower()
             _UpdateIni -IniPath $IniPath -Section 'PreInstall' -Key 'SnapshotEnabled' -Value $defaultsConfig.SnapshotEnabled.ToString().ToLower()
             _UpdateIni -IniPath $IniPath -Section 'PreInstall' -Key 'HpuCheck'        -Value $defaultsConfig.HpuCheck.ToString().ToLower()
+
+            _UpdateIni -IniPath $IniPath -Section 'Installation' -Key 'TempDbFileCount'      -Value $defaultsConfig.TempDbFileCount.ToString()
+            _UpdateIni -IniPath $IniPath -Section 'Installation' -Key 'TempDbFileCountFixed' -Value $defaultsConfig.TempDbFileCountFixed.ToString().ToLower()
 
             # --- Definierte SourceShare-Struktur im Hintergrund anlegen. ---
             # Ist der Pfad (z.B. UNC-Freigabe) nicht erreichbar: ZIP-Fallback ueber die

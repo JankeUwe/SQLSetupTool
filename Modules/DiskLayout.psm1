@@ -131,4 +131,42 @@ function Format-DiskLayoutSummary {
     return $lines -join "`n"
 }
 
-Export-ModuleMember -Function Get-SqlPaths, New-SqlDirectories, Format-DiskLayoutSummary
+function Get-SqlConnectionInstance {
+    <#
+    .SYNOPSIS
+        Baut aus einem (blossen) Instanznamen den fuer dbatools/sqmSQLTool
+        -SqlInstance-Parameter noetigen Verbindungsstring.
+    .DESCRIPTION
+        settings.ini/GUI/Get-SqlPaths verwenden durchgehend blosse Instanznamen
+        (z.B. 'MSSQLServer' fuer die Standardinstanz oder 'INST01' fuer eine
+        benannte Instanz) - praktisch fuer Pfad-/Namensbildung, aber KEIN
+        gueltiges Ziel fuer dbatools/sqmSQLTool: deren -SqlInstance-Parameter wird
+        immer als Netzwerkziel aufgeloest (Resolve-DbaNetworkName). Ein blosser
+        Instanzname wie 'MSSQLServer' ist kein Hostname und schlaegt dort mit
+        "DNS name ... not found" fehl.
+
+        Diese Funktion liefert stattdessen:
+          - '<Computer>'            fuer die Standardinstanz (leer / MSSQLSERVER / MSSQLServer)
+          - '<Computer>\<Instanz>'  fuer benannte Instanzen
+        Ist der Eingabewert bereits qualifiziert (enthaelt '\'), wird er unveraendert
+        zurueckgegeben.
+    .PARAMETER InstanceName
+        Blosser Instanzname oder bereits vollstaendig qualifiziert ('SERVER\INST01').
+    .PARAMETER ComputerName
+        Zielcomputer. Standard: lokaler Rechner ($env:COMPUTERNAME).
+    #>
+    param(
+        [string]$InstanceName,
+        [string]$ComputerName = $env:COMPUTERNAME
+    )
+
+    if ($InstanceName -match '\\') {
+        return $InstanceName
+    }
+    if ([string]::IsNullOrWhiteSpace($InstanceName) -or $InstanceName -eq 'MSSQLSERVER' -or $InstanceName -eq 'MSSQLServer') {
+        return $ComputerName
+    }
+    return "$ComputerName\$InstanceName"
+}
+
+Export-ModuleMember -Function Get-SqlPaths, New-SqlDirectories, Format-DiskLayoutSummary, Get-SqlConnectionInstance

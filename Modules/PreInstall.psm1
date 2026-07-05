@@ -99,14 +99,20 @@ function Invoke-PreInstallChecks {
         log 'PreInstall: Pruefe NTFS-Blockgroesse (64K-Empfehlung fuer SQL Server)...'
 
         # Laufwerke aus DiskLayout zusammenstellen (ohne Doppelpunkte, eindeutig)
+        # Aeusseres @() erzwingt ein Array, auch wenn nach Sort-Object -Unique nur ein
+        # einziges Laufwerk uebrigbleibt (z.B. alle vier Rollen auf demselben Laufwerk) -
+        # sonst liefert die Pipeline einen skalaren String zurueck und $drivesToCheck.Count
+        # schlaegt unter Set-StrictMode (Windows PowerShell 5.1 kennt kein skalares .Count) fehl.
         $drivesToCheck = @(
-            $DiskLayout['DataDrive'],
-            $DiskLayout['LogDrive'],
-            $DiskLayout['TempDrive'],
-            $DiskLayout['BackupDrive']
-        ) | ForEach-Object { $_.TrimEnd(':').Trim().ToUpper() } |
-            Where-Object   { $_ -ne '' -and $_ -ne 'C' } |
-            Sort-Object -Unique
+            @(
+                $DiskLayout['DataDrive'],
+                $DiskLayout['LogDrive'],
+                $DiskLayout['TempDrive'],
+                $DiskLayout['BackupDrive']
+            ) | ForEach-Object { $_.TrimEnd(':').Trim().ToUpper() } |
+                Where-Object   { $_ -ne '' -and $_ -ne 'C' } |
+                Sort-Object -Unique
+        )
 
         if ($drivesToCheck.Count -eq 0) {
             log '  INFO: Keine Laufwerke fuer 64K-Pruefung konfiguriert.'

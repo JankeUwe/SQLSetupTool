@@ -95,6 +95,14 @@ function Invoke-PostInstall {
         else              { Write-Host $msg }
     }
 
+    # $SqlInstance kommt hier als blosser Instanzname an (z.B. "MSSQLServer" oder "INST01" -
+    # so liefert ihn Start-SqlSetup.ps1/MainForm.ps1 durchgehend). Alle dba/sqm-Aufrufe in
+    # dieser Funktion brauchen aber einen echten Verbindungsstring (Resolve-DbaNetworkName
+    # loest -SqlInstance immer als Netzwerkziel auf) - deshalb hier EINMALIG umwandeln und
+    # fuer den Rest der Funktion (inkl. Set-SqlMaxMemory/-SqlTempDbFiles/Enable-SqlAgentAutoStart
+    # und ein etwaiges PostInstallScript) durchreichen.
+    $SqlInstance = Get-SqlConnectionInstance -InstanceName $SqlInstance
+
     # ------------------------------------------------------------------
     # Checkpoint / Resume - State je Instanz
     # ------------------------------------------------------------------
@@ -305,9 +313,18 @@ WHERE IS_SRVROLEMEMBER('sysadmin', name) = 1 AND sid <> 0x01 AND name NOT LIKE '
         }
 
         # ===== 10. Instanz-Validierung =====
+        # Get-sqmSQLInstanceCheck liefert ein ARRAY von Einzelpruefungen (Check/Status/Message
+        # je Pruefpunkt wie MAXDOP, Max Server Memory, ...) - kein einzelnes Objekt mit
+        # Gesamt-".Status". Vorher wurde "$check.Status" geloggt, was via PowerShell-
+        # Member-Enumeration eine unsortierte Liste ALLER Einzelstatus ergab statt einer
+        # sinnvollen Zusammenfassung.
         Invoke-Step '10-InstanceCheck' 'Instanz-Validierung' {
-            $check = Get-sqmSQLInstanceCheck -SqlInstance $SqlInstance -ErrorAction Stop
-            log "  OK: Instanz-Status: $($check.Status)"
+            $checks = @(Get-sqmSQLInstanceCheck -SqlInstance $SqlInstance -ErrorAction Stop)
+            $notOk  = @($checks | Where-Object { $_.Status -ne 'OK' })
+            log "  OK: Instanz-Validierung abgeschlossen ($($checks.Count) Pruefungen, $($notOk.Count) davon nicht OK)."
+            foreach ($c in $notOk) {
+                log "    [$($c.Status)] $($c.Check): $($c.Message)"
+            }
         }
 
         # ===== 11. Benutzerdefiniertes PostInstall-Script =====
@@ -427,7 +444,8 @@ function Set-SqlMaxMemory {
     param([Parameter(Mandatory)][string]$SqlInstance)
     $totalMb = [math]::Round((Get-WmiObject Win32_ComputerSystem).TotalPhysicalMemory / 1MB)
     $maxMb   = [math]::Round($totalMb * 0.9)
-    Set-DbaMaxMemory -SqlInstance $SqlInstance -MaxMb $maxMb -Confirm:$false
+    # Set-DbaMaxMemory kennt "-Max", nicht "-MaxMb".
+    Set-DbaMaxMemory -SqlInstance $SqlInstance -Max $maxMb -Confirm:$false
 }
 
 function Set-SqlMaxDop {
@@ -454,9 +472,16 @@ function Set-SqlTempDbFiles {
         [Parameter(Mandatory)][PSCustomObject]$SqlPaths,
         [PSCustomObject]$InstallConfig
     )
-    # Dateianzahl: CPU-basiert (4-8), unabhaengig vom Installationswert
-    $cpus  = (Get-WmiObject Win32_ComputerSystem).NumberOfLogicalProcessors
-    $files = [math]::Max(4, [math]::Min(8, $cpus))
+    # Dateianzahl: standardmaessig CPU-basiert (4-8, Microsoft-Empfehlung). Manche Kunden
+    # bestehen jedoch auf eine feste Anzahl unabhaengig von der Kernzahl - dafuer
+    # settings.ini [Installation] TempDbFileCountFixed = true setzen; TempDbFileCount
+    # wird dann exakt uebernommen statt CPU-basiert ueberschrieben zu werden.
+    if ($InstallConfig -and $InstallConfig.TempDbFileCountFixed -and $InstallConfig.TempDbFileCount) {
+        $files = [int]$InstallConfig.TempDbFileCount
+    } else {
+        $cpus  = (Get-WmiObject Win32_ComputerSystem).NumberOfLogicalProcessors
+        $files = [math]::Max(4, [math]::Min(8, $cpus))
+    }
 
     # Groesse/Wachstum aus InstallConfig oder Defaults (1024 MB / 512 MB gemaess SQLConfig.INI)
     $sizeMB      = if ($InstallConfig -and $InstallConfig.TempDbFileSizeMB)    { $InstallConfig.TempDbFileSizeMB }    else { 1024 }

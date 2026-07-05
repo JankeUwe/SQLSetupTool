@@ -328,6 +328,95 @@ function Get-DomainProfile {
 }
 
 # ---------------------------------------------------------------------------
+# Neues Domain-Profil anlegen (Config\domains\<DOMAIN>.ini)
+# ---------------------------------------------------------------------------
+function Save-DomainProfile {
+    <#
+    .SYNOPSIS
+        Legt ein neues Domain-Profil an (Config\domains\<Domain>.ini).
+    .DESCRIPTION
+        Wird angeboten wenn SQL-Setup eine Domain ohne eigenes Profil vorfindet
+        (siehe Get-SetupConfig: HasDomainProfile/DomainProfilePath). Format ist
+        identisch zu Start-DomainConfig.cmd (GUI\DomainConfigForm.ps1), damit
+        beide Tools dieselben Dateien lesen/schreiben.
+    .PARAMETER ConfigDir
+        Verzeichnis in dem der domains-Unterordner liegt (i.d.R. Config\).
+    .PARAMETER Domain
+        NetBIOS-Domainname - Dateiname wird <Domain>.ini.
+    .PARAMETER DisplayName
+        Anzeigename im Domain-Konfiguration-Editor. Default: Domain-Name.
+    .PARAMETER Collation
+    .PARAMETER SysadminGroups
+        Array von AD-Gruppennamen.
+    .PARAMETER MonitoringType
+        0-basierter Index in settings.ini [Monitoring] Types.
+    .PARAMETER DiskLayout
+        Hashtable mit DataDrive/LogDrive/TempDrive/BackupDrive/InstallDrive.
+    .PARAMETER SQLSourcesPath
+    .OUTPUTS
+        Vollstaendiger Pfad der geschriebenen .ini-Datei.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ConfigDir,
+        [Parameter(Mandatory)][string]$Domain,
+        [string]$DisplayName = '',
+        [string]$Collation = 'Latin1_General_CI_AS',
+        [string[]]$SysadminGroups = @(),
+        [int]$MonitoringType = 1,
+        [hashtable]$DiskLayout,
+        [string]$SQLSourcesPath = ''
+    )
+
+    $domainsDir = Join-Path $ConfigDir 'domains'
+    if (-not (Test-Path $domainsDir)) {
+        New-Item -ItemType Directory -Path $domainsDir -Force | Out-Null
+    }
+    $path = Join-Path $domainsDir "$Domain.ini"
+
+    if ($DisplayName -eq '') { $DisplayName = $Domain }
+
+    $dl = if ($DiskLayout) { $DiskLayout } else { @{} }
+    $dataDrive    = if ($dl['DataDrive'])    { $dl['DataDrive'] }    else { 'C' }
+    $logDrive     = if ($dl['LogDrive'])     { $dl['LogDrive'] }     else { 'C' }
+    $tempDrive    = if ($dl['TempDrive'])    { $dl['TempDrive'] }    else { 'C' }
+    $backupDrive  = if ($dl['BackupDrive'])  { $dl['BackupDrive'] }  else { 'C' }
+    $installDrive = if ($dl['InstallDrive']) { $dl['InstallDrive'] } else { 'C' }
+
+    $lines = @(
+        "# Domain-Profil: $Domain",
+        '',
+        '[Profile]',
+        "DisplayName = $DisplayName",
+        '',
+        '[Collation]',
+        "Default = $Collation",
+        '',
+        '[SysadminGroups]',
+        '# Kommagetrennte AD-Gruppen fuer sysadmin-Rolle nach der Installation.',
+        "Groups = $($SysadminGroups -join ',')",
+        '',
+        '[Monitoring]',
+        '# 0-basierter Index in die Monitoring-Typen-Liste (settings.ini [Monitoring] Types)',
+        "Type = $MonitoringType",
+        '',
+        '[DiskLayout]',
+        "DataDrive    = $dataDrive",
+        "LogDrive     = $logDrive",
+        "TempDrive    = $tempDrive",
+        "BackupDrive  = $backupDrive",
+        "InstallDrive = $installDrive",
+        '',
+        '[SQLSources]',
+        '# Pfad zu den SQL-Installationsquellen auf Servern dieser Domain.',
+        '# Das Setup-Tool sucht hier nach SQL<Version>\SQL_Install\setup.exe usw.',
+        '# Leer = globaler SourceShare aus settings.ini wird verwendet.',
+        "SourcePath = $SQLSourcesPath"
+    )
+    Set-Content -Path $path -Value $lines -Encoding UTF8
+    return $path
+}
+
+# ---------------------------------------------------------------------------
 # Hauptfunktion: Konfigurationsobjekt aufbauen
 # ---------------------------------------------------------------------------
 function Get-SetupConfig {
@@ -345,6 +434,14 @@ function Get-SetupConfig {
     $configDir     = Split-Path $IniPath -Parent
     $domain        = Get-CurrentDomain
     $domainProfile = Get-DomainProfile -ConfigDir $configDir -Domain $domain
+
+    # Ob es fuer DIESE Domain bereits ein eigenes Profil gibt (Config\domains\<Domain>.ini) -
+    # $domainProfile alleine reicht dafuer nicht, da Get-DomainProfile bei fehlendem
+    # domainspezifischem Profil automatisch auf DEFAULT.ini zurueckfaellt (dann waere
+    # $domainProfile trotzdem nicht $null). Wird verwendet um bei einer "neuen" Domain
+    # (domain-joined, aber noch kein Profil) die Option anzubieten, eines anzulegen.
+    $domainProfilePath = if ($domain -and $domain -ne '') { Join-Path $configDir 'domains' "$domain.ini" } else { $null }
+    $hasDomainProfile  = [bool]($domainProfilePath -and (Test-Path $domainProfilePath))
 
     # -- [General] -----------------------------------------------------------
     $general = $ini['General']
@@ -474,6 +571,7 @@ function Get-SetupConfig {
         InstantFileInit     = ($instSection['InstantFileInit'] -eq 'true')
         SysAdminAccounts    = $instSysAdmins
         TempDbFileCount     = if ($instSection['TempDbFileCount'])     { [int]$instSection['TempDbFileCount'] }     else { 2 }
+        TempDbFileCountFixed = ($instSection['TempDbFileCountFixed'] -eq 'true')
         TempDbFileSizeMB    = if ($instSection['TempDbFileSizeMB'])    { [int]$instSection['TempDbFileSizeMB'] }    else { 1024 }
         TempDbFileGrowthMB  = if ($instSection['TempDbFileGrowthMB'])  { [int]$instSection['TempDbFileGrowthMB'] }  else { 512 }
         TempDbLogFileSizeMB = if ($instSection['TempDbLogFileSizeMB']) { [int]$instSection['TempDbLogFileSizeMB'] } else { 1024 }
@@ -645,12 +743,14 @@ function Get-SetupConfig {
         # Metadaten
         Domain              = $domain
         DomainProfile       = $domainProfile
+        HasDomainProfile    = $hasDomainProfile
+        DomainProfilePath   = $domainProfilePath
         SQLSourcesPath      = if ($domainProfile) { $domainProfile.SQLSourcesPath } else { '' }
         ConfigDir           = $configDir
         IniPath             = $IniPath
     }
 }
 
-Export-ModuleMember -Function Get-SetupConfig, Get-CurrentDomain, Get-CollationList, Get-DbaToolsConfig, Get-sqmSQLToolConfig, Get-DomainProfile
+Export-ModuleMember -Function Get-SetupConfig, Get-CurrentDomain, Get-CollationList, Get-DbaToolsConfig, Get-sqmSQLToolConfig, Get-DomainProfile, Save-DomainProfile
 
 

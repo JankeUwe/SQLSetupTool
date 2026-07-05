@@ -56,6 +56,23 @@ function Invoke-SqlInstallation {
 
     # InstallConfig-Defaults wenn nicht uebergeben
     $features        = if ($InstallConfig -and $InstallConfig.Features)         { $InstallConfig.Features }         else { @('Engine') }
+
+    # settings.ini [Installation] Features verwendet Kurzformen (siehe Kommentar dort:
+    # "Gueltige Werte: Engine, FullText, Replication, IS, AS, RS, Tools, MDS"), aber
+    # Install-DbaInstance (dbatools) erwartet die vollen Feature-Namen im -Feature-
+    # ValidateSet (u.a. IntegrationServices, AnalysisServices, ReportingServices,
+    # MasterDataServices). Ohne diese Abbildung schlaegt z.B. "IS" mit
+    # ParameterArgumentValidationError fehl. Unbekannte Werte (z.B. bereits volle
+    # dbatools-Namen) werden unveraendert durchgereicht - Install-DbaInstance validiert selbst.
+    $featureShortNameMap = @{
+        IS  = 'IntegrationServices'
+        AS  = 'AnalysisServices'
+        RS  = 'ReportingServices'
+        MDS = 'MasterDataServices'
+    }
+    $features = @($features | ForEach-Object {
+        if ($featureShortNameMap.ContainsKey($_)) { $featureShortNameMap[$_] } else { $_ }
+    })
     $ifi             = if ($InstallConfig)                                        { $InstallConfig.InstantFileInit }  else { $true }
     $sysAdmins       = if ($InstallConfig -and $InstallConfig.SysAdminAccounts)  { $InstallConfig.SysAdminAccounts } else { @('BUILTIN\Administrators') }
     $tmpFileCount    = if ($InstallConfig)                                        { $InstallConfig.TempDbFileCount }     else { 2 }
@@ -64,26 +81,43 @@ function Invoke-SqlInstallation {
     $tmpLogSize      = if ($InstallConfig)                                        { $InstallConfig.TempDbLogFileSizeMB } else { 1024 }
     $tmpLogGrowth    = if ($InstallConfig)                                        { $InstallConfig.TempDbLogGrowthMB }   else { 512 }
 
+    # Install-DbaInstance (dbatools) kennt weder eigene TempDB-Datei-Parameter noch
+    # SystemDbPath/Collation unter diesen Namen - das laeuft ueber -InstancePath,
+    # -SqlCollation und die generische -Configuration-Hashtable (rohe setup.exe
+    # Configuration.ini-Schluessel: INSTALLSQLDATADIR, SQLTEMPDBFILECOUNT, ...).
+    # Frueherer Code nutzte erfundene Parameternamen (InstallPath, SystemDbPath,
+    # Collation, SqlTempdbFileCount/...), die es in dieser dbatools-Version nicht
+    # gibt -> NamedParameterNotFound / ParameterArgumentValidationError.
+    $configuration = @{
+        INSTALLSQLDATADIR       = $SqlPaths.SysDb
+        SQLTEMPDBFILECOUNT      = $tmpFileCount
+        SQLTEMPDBFILESIZE       = $tmpFileSize
+        SQLTEMPDBFILEGROWTH     = $tmpFileGrowth
+        SQLTEMPDBLOGFILESIZE    = $tmpLogSize
+        SQLTEMPDBLOGFILEGROWTH  = $tmpLogGrowth
+    }
+
+    # -SqlInstance wird von Install-DbaInstance IMMER als Netzwerkziel aufgeloest
+    # (Resolve-DbaNetworkName) - der blosse Instanzname (z.B. "MSSQLServer") ist dafuer
+    # kein gueltiges Ziel und schlaegt mit "DNS name ... not found" fehl. Install-DbaInstance
+    # hat dafuer bewusst zwei getrennte Parameter: -SqlInstance (Zielcomputer) und
+    # -InstanceName (der eigentliche Instanzname) - beide zusammen ergeben das Ziel.
     $params = @{
-        SqlInstance                  = $InstanceName
+        SqlInstance                  = $env:COMPUTERNAME
+        InstanceName                 = $InstanceName
         Version                      = $Version
         Feature                      = $features
         Path                         = $sourcePath
-        InstallPath                  = $SqlPaths.Install
-        SystemDbPath                 = $SqlPaths.SysDb
+        InstancePath                 = $SqlPaths.Install
         DataPath                     = $SqlPaths.Data
         LogPath                      = $SqlPaths.Log
         TempPath                     = $SqlPaths.TempDB
         BackupPath                   = $SqlPaths.Backup
-        Collation                    = $Collation
+        SqlCollation                 = $Collation
         AuthenticationMode           = 'Windows'
         AdminAccount                 = $sysAdmins
         PerformVolumeMaintenanceTasks = $ifi
-        SqlTempdbFileCount           = $tmpFileCount
-        SqlTempdbFileSize            = $tmpFileSize
-        SqlTempdbFileGrowth          = $tmpFileGrowth
-        SqlTempdbLogFileSize         = $tmpLogSize
-        SqlTempdbLogFileGrowth       = $tmpLogGrowth
+        Configuration                = $configuration
         Confirm                      = $false
     }
 
@@ -103,15 +137,35 @@ function Invoke-SqlInstallation {
         $params['EngineCredential'] = $ServiceCredential
     }
 
+    # Install-DbaInstance delegiert intern an die private Invoke-DbaAdvancedInstall, die bei einem
+    # Fehlschlag Stop-Function aufruft. OHNE -EnableException ist das ein NICHT-terminierender
+    # Fehler: Stop-Function schreibt eine Warnung und die Funktion kehrt zurueck, OHNE das
+    # Ergebnisobjekt (Successful/ExitCode/Log/...) auszugeben - Install-DbaInstance liefert dann
+    # schlicht GAR NICHTS ($null) statt eines Objekts mit Successful=$false. Der Aufrufer crasht in
+    # diesem Fall mit einer nichtssagenden "Successful wurde nicht gefunden"-Exception auf $null,
+    # obwohl der eigentliche Fehler (z.B. ungueltige setup.exe-Konfiguration) schon vorher geloggt
+    # wurde. Mit -EnableException wird ein echter Fehlschlag stattdessen als PowerShell-Exception
+    # geworfen, mit vollem dbatools-Kontext (ExitCode/Log-Auszug) in der Fehlermeldung.
+    $params['EnableException'] = $true
+
     if ($LogCallback) { & $LogCallback "Starte Install-DbaInstance fuer SQL $Version $Edition ..." }
     if ($LogCallback) { & $LogCallback "  Quelle     : $sourcePath" }
     if ($LogCallback) { & $LogCallback "  SysDb-Pfad : $($SqlPaths.SysDb)" }
     if ($LogCallback) { & $LogCallback "  Features   : $($features -join ', ')" }
     if ($LogCallback) { & $LogCallback "  IFI        : $ifi | TempDB-Files: $tmpFileCount x ${tmpFileSize}MB" }
 
-    Install-DbaInstance @params
+    $result = Install-DbaInstance @params
 
     if ($LogCallback) { & $LogCallback "Install-DbaInstance abgeschlossen." }
+
+    # Sicherheitsnetz: sollte trotz -EnableException dennoch kein Objekt zurueckkommen, hier mit
+    # einer klaren Meldung abbrechen statt den Aufrufer spaeter mit einer kryptischen
+    # PropertyNotFoundException auf $installResult.Successful crashen zu lassen.
+    if ($null -eq $result) {
+        throw 'Install-DbaInstance hat kein Ergebnisobjekt zurueckgegeben. Installation vermutlich fehlgeschlagen - siehe vorherige Log-Zeilen.'
+    }
+
+    return $result
 }
 
 function Install-SsrsComponent {

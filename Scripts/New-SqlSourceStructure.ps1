@@ -173,6 +173,16 @@ if (-not (Test-Path $IniPath)) {
 }
 $ini = Read-IniFile -Path $IniPath
 
+function Get-IniSectionValue {
+    param($IniTable, [string]$Section, [string]$Key)
+    if ($IniTable.ContainsKey($Section) -and $IniTable[$Section].ContainsKey($Key)) {
+        return $IniTable[$Section][$Key]
+    }
+    return ''
+}
+
+Import-Module (Join-Path $PSScriptRoot '..\Modules\GitFetch.psm1') -Force
+
 # ---------------------------------------------------------------------------
 # 2. Parameter aus INI ergaenzen
 # ---------------------------------------------------------------------------
@@ -425,6 +435,18 @@ settings.ini: [sqmSQLTool] ShareBasePath = <SQLSources>\Modules
 Quelle: https://github.com/JankeUwe/sqmSQLTool
         https://www.powershellgallery.com/packages/sqmSQLTool
 "@
+
+# Sind die drei Modul-Ordner oben noch leer (kein .psd1), werden sie - sofern eine
+# Repo-URL in settings.ini [GitSources] hinterlegt ist - automatisch per 'git clone'
+# befuellt. Laeuft nur hier beim Anlegen der Sources, nicht beim Setup selbst.
+Write-Host ''
+Write-Host '--- Modul-Quellen von Git nachladen (falls leer) ---' -ForegroundColor White
+Get-ModuleFromGitSource -ModuleFolder (Join-Path $BasePath 'Modules\dbaTools') `
+    -RepoUrl (Get-IniSectionValue $ini 'GitSources' 'DbaTools_RepoUrl') | Out-Null
+Get-ModuleFromGitSource -ModuleFolder (Join-Path $BasePath 'Modules\dbatools.library') `
+    -RepoUrl (Get-IniSectionValue $ini 'GitSources' 'DbaToolsLibrary_RepoUrl') | Out-Null
+Get-ModuleFromGitSource -ModuleFolder (Join-Path $BasePath 'Modules\sqmSQLTool') `
+    -RepoUrl (Get-IniSectionValue $ini 'GitSources' 'sqmSQLTool_RepoUrl') | Out-Null
 
 # ---------------------------------------------------------------------------
 # 7. GUI-Tools (versionsneutral)
