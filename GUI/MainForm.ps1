@@ -528,15 +528,60 @@ function Show-SetupForm {
     )
 
     $script:DiskTextBoxes = @{}
+    $script:DiskLayoutDefaults = @{}
     foreach ($d in $drives) {
         Add-Label -Parent $gbDisk -Text $d.Label -X $d.X -Y $d.Y -Width 70
         $driveTb = Add-TextBox -Parent $gbDisk -X ($d.X + 75) -Y ($d.Y - 2) -Width 40 `
                                -Default ($diskLayout[$d.Key] + ':')
-        $script:DiskTextBoxes[$d.Key] = $driveTb
+        $script:DiskTextBoxes[$d.Key]        = $driveTb
+        $script:DiskLayoutDefaults[$d.Key]   = $diskLayout[$d.Key] + ':'
     }
 
     Add-Label -Parent $gbDisk -Text '(Laufwerksbuchstaben aus INI - je Domain konfigurierbar)' `
               -X 10 -Y 88 -Width 500
+
+    # Single-Drive-Server: alle Rollen auf EINEN (frei waehlbaren) Buchstaben legen.
+    # Der Buchstabe ist nicht domaenenweit einheitlich, deshalb kein INI-Wert dafuer -
+    # der Techniker traegt ihn direkt im Feld "Installation" ein.
+    $script:ChkSingleDrive = Add-CheckBox -Parent $gbDisk -Text 'Ein Laufwerk (Single-Drive)' -X 330 -Y 16
+    $script:ChkSingleDrive.Size = New-Object System.Drawing.Size(240, 20)
+
+    function Sync-SingleDriveLayout {
+        # Theme-taugliche Farben statt SystemColors verwenden (Set-VsDarkTheme setzt ForeColor
+        # bereits auf helles Theme-Text - mit hellem SystemColors-Hintergrund waere das unlesbar).
+        # $script:VsPalette wird erst am Ende von Show-SetupForm gesetzt; vor dem ersten
+        # Theme-Durchlauf (z.B. falls diese Funktion frueher aufgerufen wuerde) auf SystemColors
+        # zurueckfallen, damit die Funktion nie gegen $null.Panel/.Window laeuft.
+        $readOnlyBack  = if ($script:VsPalette) { $script:VsPalette.Panel }  else { [System.Drawing.SystemColors]::Control }
+        $readOnlyFore  = if ($script:VsPalette) { $script:VsPalette.Dim }    else { [System.Drawing.SystemColors]::ControlDarkDark }
+        $editableBack  = if ($script:VsPalette) { $script:VsPalette.Window } else { [System.Drawing.SystemColors]::Window }
+        $editableFore  = if ($script:VsPalette) { $script:VsPalette.Text }   else { [System.Drawing.SystemColors]::WindowText }
+
+        $otherKeys = @('DataDrive', 'LogDrive', 'TempDrive', 'BackupDrive')
+        if ($script:ChkSingleDrive.Checked) {
+            $letter = $script:DiskTextBoxes['InstallDrive'].Text
+            foreach ($key in $otherKeys) {
+                $script:DiskTextBoxes[$key].Text      = $letter
+                $script:DiskTextBoxes[$key].ReadOnly   = $true
+                $script:DiskTextBoxes[$key].BackColor  = $readOnlyBack
+                $script:DiskTextBoxes[$key].ForeColor  = $readOnlyFore
+            }
+        }
+        else {
+            # Beim Deaktivieren alle 5 Rollen auf die Domain-/Standard-Werte zuruecksetzen -
+            # sonst bliebe der zuletzt eingetippte Single-Drive-Buchstabe stehen.
+            foreach ($key in $script:DiskTextBoxes.Keys) {
+                $script:DiskTextBoxes[$key].Text      = $script:DiskLayoutDefaults[$key]
+                $script:DiskTextBoxes[$key].ReadOnly   = $false
+                $script:DiskTextBoxes[$key].BackColor  = $editableBack
+                $script:DiskTextBoxes[$key].ForeColor  = $editableFore
+            }
+        }
+    }
+    $script:ChkSingleDrive.Add_CheckedChanged({ Sync-SingleDriveLayout })
+    $script:DiskTextBoxes['InstallDrive'].Add_TextChanged({
+        if ($script:ChkSingleDrive.Checked) { Sync-SingleDriveLayout }
+    })
 
     #=== GroupBox: Monitoring ===
     $gbMonitor = Add-GroupBox -Parent $form -Text 'Monitoring' -X 10 -Y 470 -Width 780 -Height 60
@@ -682,7 +727,42 @@ function Show-SetupForm {
             if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return $false }
         }
 
+        # Installationsdateien fuer Engine + alle ausgewaehlten Optionen pruefen - anders als bei
+        # Laufwerken KEIN "Trotzdem fortfahren?" (harter Abbruch): ohne die Installer-Dateien
+        # bricht die Installation ohnehin mitten drin ab (teils erst nach Formatierung/Verzeichnis-
+        # Anlage), siehe Invoke-SqlInstallation/Install-Ssas-/Ssms-/SsrsComponent.
+        $sourceProblems = Test-SelectedSourcesAvailable `
+            -InstallDrive        $layout['InstallDrive'] `
+            -Version             $script:CbVersion.SelectedItem `
+            -OptionalComponents  $script:Config.OptionalComponents `
+            -Drivers             $script:Config.Drivers `
+            -SelectedComponents  (Get-SelectedSourceComponents)
+        if ($sourceProblems.Count -gt 0) {
+            [System.Windows.Forms.MessageBox]::Show(
+                "Installation nicht moeglich - folgende Installationsdateien fehlen:`n`n" +
+                ($sourceProblems -join "`n") +
+                "`n`nBitte die SQLSources-Struktur (Quellordner) pruefen und erneut versuchen.",
+                'Installationsdateien fehlen',
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+            return $false
+        }
+
         return $true
+    }
+
+    # Ermittelt aus dem aktuellen GUI-Zustand welche Komponenten fuer Test-SelectedSourcesAvailable
+    # geprueft werden muessen. 'Engine' immer enthalten - sie wird bei jeder Installation gebraucht.
+    function Get-SelectedSourceComponents {
+        $components = @('Engine')
+        if ($null -ne $script:ChkSSMS -and $script:ChkSSMS.Checked) { $components += 'SSMS' }
+        if ($null -ne $script:ChkSSRS -and $script:ChkSSRS.Checked) { $components += 'SSRS' }
+        if ($null -ne $script:ChkTDP  -and $script:ChkTDP.Checked)  { $components += 'TDP' }
+        if ($null -ne $script:ChkJDBC -and $script:ChkJDBC.Checked) { $components += 'JDBC' }
+        if ($null -ne $script:ChkODBC -and $script:ChkODBC.Checked) { $components += 'ODBC' }
+        if ($null -ne $script:ChkDB2  -and $script:ChkDB2.Checked)  { $components += 'DB2' }
+        return @($components)
     }
 
     # Baut den vollstaendigen Worker-Scriptblock fuer den Hintergrundthread.
@@ -727,6 +807,47 @@ Get-ChildItem '$modulesDir' -Filter '*.psm1' | ForEach-Object {
         $portIncr  = if ($script:Config.PortIncrement -gt 0) { $script:Config.PortIncrement } else { 10 }
         $port      = Get-TcpPortForInstance -InstanceName $inst -BasePort $basePort -PortIncrement $portIncr
         $script:LblTcpPort.Text = "Port $port"
+    })
+
+    # Sofort-Pruefung: wird eine Option (Checkbox) aktiviert und die zugehoerigen
+    # Installationsdateien fehlen im Quellordner, wird sofort gewarnt und die Option
+    # wieder deaktiviert - statt den Fehler erst mitten in der Installation zu entdecken.
+    function Confirm-ComponentSourceOrRevert {
+        param(
+            [string]$Component,
+            [System.Windows.Forms.CheckBox]$CheckBox
+        )
+        if (-not $CheckBox.Checked) { return }
+        $layout  = Get-DiskLayoutFromForm
+        $problem = Test-OptionSourceAvailable -Component $Component -InstallDrive $layout['InstallDrive'] `
+            -Version $script:CbVersion.SelectedItem -OptionalComponents $script:Config.OptionalComponents `
+            -Drivers $script:Config.Drivers
+        if ($problem) {
+            [System.Windows.Forms.MessageBox]::Show(
+                "$problem`n`nDie Option wird deaktiviert.",
+                'Installationsdateien fehlen',
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+            $CheckBox.Checked = $false
+        }
+    }
+    if ($null -ne $script:ChkSSMS) { $script:ChkSSMS.Add_CheckedChanged({ Confirm-ComponentSourceOrRevert -Component 'SSMS' -CheckBox $script:ChkSSMS }) }
+    if ($null -ne $script:ChkSSRS) { $script:ChkSSRS.Add_CheckedChanged({ Confirm-ComponentSourceOrRevert -Component 'SSRS' -CheckBox $script:ChkSSRS }) }
+    if ($null -ne $script:ChkTDP)  { $script:ChkTDP.Add_CheckedChanged({  Confirm-ComponentSourceOrRevert -Component 'TDP'  -CheckBox $script:ChkTDP  }) }
+    if ($null -ne $script:ChkJDBC) { $script:ChkJDBC.Add_CheckedChanged({ Confirm-ComponentSourceOrRevert -Component 'JDBC' -CheckBox $script:ChkJDBC }) }
+    if ($null -ne $script:ChkODBC) { $script:ChkODBC.Add_CheckedChanged({ Confirm-ComponentSourceOrRevert -Component 'ODBC' -CheckBox $script:ChkODBC }) }
+    if ($null -ne $script:ChkDB2)  { $script:ChkDB2.Add_CheckedChanged({  Confirm-ComponentSourceOrRevert -Component 'DB2'  -CheckBox $script:ChkDB2  }) }
+
+    # CbVersion SelectedIndexChanged -> Engine-Quelle ist versionsabhaengig (SQLSources\SQL<Version>\
+    # SQL_Install), SSMS ebenso (...\Management) - beim Versionswechsel sofort neu pruefen.
+    $script:CbVersion.Add_SelectedIndexChanged({
+        $layout = Get-DiskLayoutFromForm
+        $engineProblem = Test-OptionSourceAvailable -Component 'Engine' -InstallDrive $layout['InstallDrive'] `
+            -Version $script:CbVersion.SelectedItem -OptionalComponents $script:Config.OptionalComponents `
+            -Drivers $script:Config.Drivers
+        if ($engineProblem) { Write-Log "WARNUNG: $engineProblem" }
+        if ($null -ne $script:ChkSSMS) { Confirm-ComponentSourceOrRevert -Component 'SSMS' -CheckBox $script:ChkSSMS }
     })
 
     # Form_Shown: BringToFront + initiales Log + Pfadprüfung
@@ -1199,6 +1320,8 @@ $($worker.ToString())
                                        -QualysEnabled        $snapConfig.QualysEnabled `
                                        -QualysMonitoringUser $snapConfig.QualysMonitoringUser `
                                        -SysadminGroups       $snapConfig.SysadminGroups `
+                                       -RemoveBuiltinAdmins  $snapConfig.RemoveBuiltinAdmins `
+                                       -InstallJobs       $snapConfig.InstallJobs `
                                        -OlaSourcePath     $snapConfig.OlaSourcePath `
                                        -SqlScriptsPath    $snapConfig.SqlScriptsPath `
                                        -PostInstallScript $snapConfig.PostInstallScript `
@@ -1320,9 +1443,15 @@ $($worker.ToString())
     # --- Visual Studio "Dark" Theme anwenden (einheitlich mit unseren anderen GUIs) ---
     . (Join-Path $PSScriptRoot 'Theme.ps1')
     $vsPalette = Get-VsDarkPalette
+    $script:VsPalette = $vsPalette   # von Sync-SingleDriveLayout fuer theme-taugliche Farben verwendet
     $form.BackColor = $vsPalette.Panel
     $form.ForeColor = $vsPalette.Text
     Set-VsDarkTheme -Control $form -Palette $vsPalette
+
+    # Sync-SingleDriveLayout faerbt die Plattenlayout-Textboxen bereits beim Formularaufbau (vor
+    # diesem Theme-Durchlauf) mit SystemColors - hier auf die Dark-Theme-Farben nachziehen, sonst
+    # bleiben ReadOnly-Felder mit hellem SystemColors-Hintergrund UND hellem Theme-Text (unlesbar).
+    Sync-SingleDriveLayout
 
     [System.Windows.Forms.Application]::Run($form)
 

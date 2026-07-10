@@ -64,7 +64,8 @@ function Show-DomainConfigForm {
               [string]$Groups, [string]$MonType,
               [string]$DataDrive, [string]$LogDrive, [string]$TempDrive,
               [string]$BackupDrive, [string]$InstallDrive,
-              [string]$SQLSourcesPath)
+              [string]$SQLSourcesPath, [bool]$RemoveBuiltinAdmins = $true,
+              [bool]$InstallJobs = $true)
 
         $lines = @(
             "# Domain-Profil: $(Split-Path $Path -LeafBase)",
@@ -94,7 +95,17 @@ function Show-DomainConfigForm {
             '# Pfad zu den SQL-Installationsquellen auf Servern dieser Domain.',
             '# Das Setup-Tool sucht hier nach SQL<Version>\SQL_Install\setup.exe usw.',
             '# Leer = globaler SourceShare aus settings.ini wird verwendet.',
-            "SourcePath = $SQLSourcesPath"
+            "SourcePath = $SQLSourcesPath",
+            '',
+            '[Security]',
+            '# false = BUILTIN\Administrators bleibt in dieser Domain bestehen (Ausnahme vom',
+            '# globalen Standard settings.ini [Security] Standard=true).',
+            "RemoveBuiltinAdmins = $(if ($RemoveBuiltinAdmins) { 'true' } else { 'false' })",
+            '',
+            '[Maintenance]',
+            '# false = keine Wartungs-/Backup-Jobs (Ola Hallengren) in dieser Domain (Ausnahme vom',
+            '# globalen Standard settings.ini [Maintenance] Standard=true), z.B. bei eigenem Backup-Tool/TDP.',
+            "InstallJobs = $(if ($InstallJobs) { 'true' } else { 'false' })"
         )
         Set-Content -Path $Path -Value $lines -Encoding UTF8
     }
@@ -262,6 +273,26 @@ function Show-DomainConfigForm {
     if ($cbMonType.Items.Count -gt 0) { $cbMonType.SelectedIndex = 1 }
     $tabGen.Controls.Add($cbMonType)
 
+    $y += 36
+    $chkRemoveBuiltinAdmins          = New-Object System.Windows.Forms.CheckBox
+    $chkRemoveBuiltinAdmins.Text     = 'BUILTIN\Administrators nach der Installation entfernen'
+    $chkRemoveBuiltinAdmins.Location = New-Object System.Drawing.Point(165, $y)
+    $chkRemoveBuiltinAdmins.Size     = New-Object System.Drawing.Size(420, 20)
+    $chkRemoveBuiltinAdmins.Checked  = $true
+    $tabGen.Controls.Add($chkRemoveBuiltinAdmins)
+    _Lbl -P $tabGen -T '(aus, wenn diese Domain BUILTIN\Administrators dauerhaft behalten soll)' `
+         -X 165 -Y ($y + 18) -W 420
+
+    $y += 40
+    $chkInstallJobs          = New-Object System.Windows.Forms.CheckBox
+    $chkInstallJobs.Text     = 'Wartungs-/Backup-Jobs installieren (Ola Hallengren)'
+    $chkInstallJobs.Location = New-Object System.Drawing.Point(165, $y)
+    $chkInstallJobs.Size     = New-Object System.Drawing.Size(420, 20)
+    $chkInstallJobs.Checked  = $true
+    $tabGen.Controls.Add($chkInstallJobs)
+    _Lbl -P $tabGen -T '(aus, wenn diese Domain ein eigenes Backup-/Wartungswerkzeug nutzt, z.B. TDP)' `
+         -X 165 -Y ($y + 18) -W 420
+
     $y += 50
     $sepLine          = New-Object System.Windows.Forms.Panel
     $sepLine.Location = New-Object System.Drawing.Point(10, $y)
@@ -336,6 +367,8 @@ function Show-DomainConfigForm {
         if ($cbCollation.Items.Count -gt 0) { $cbCollation.SelectedIndex = 0 }
         $tbGroups.Text      = ''
         if ($cbMonType.Items.Count -gt 0)   { $cbMonType.SelectedIndex = 1 }
+        $chkRemoveBuiltinAdmins.Checked = $true
+        $chkInstallJobs.Checked = $true
         $tbSQLSourcesPath.Text = ''
         if ($cbDataDrive.Items.Contains('G'))    { $cbDataDrive.SelectedItem    = 'G' }
         if ($cbLogDrive.Items.Contains('H'))     { $cbLogDrive.SelectedItem     = 'H' }
@@ -362,6 +395,12 @@ function Show-DomainConfigForm {
         $monIdx = 1
         if ($monRaw -match '^\d+$') { $monIdx = [int]$monRaw }
         if ($monIdx -lt $cbMonType.Items.Count) { $cbMonType.SelectedIndex = $monIdx }
+
+        $rbaRaw = _IniVal $d 'Security' 'RemoveBuiltinAdmins' 'true'
+        $chkRemoveBuiltinAdmins.Checked = ($rbaRaw.Trim().ToLower() -ne 'false')
+
+        $ijRaw = _IniVal $d 'Maintenance' 'InstallJobs' 'true'
+        $chkInstallJobs.Checked = ($ijRaw.Trim().ToLower() -ne 'false')
 
         $tbSQLSourcesPath.Text = _IniVal $d 'SQLSources' 'SourcePath'
 
@@ -427,7 +466,8 @@ function Show-DomainConfigForm {
         _WriteProfile -Path $newPath -DisplayName $newName `
             -Collation 'Latin1_General_CI_AS' -Groups '' -MonType '1' `
             -DataDrive 'G' -LogDrive 'H' -TempDrive 'I' `
-            -BackupDrive 'F' -InstallDrive 'C' -SQLSourcesPath ''
+            -BackupDrive 'F' -InstallDrive 'C' -SQLSourcesPath '' `
+            -RemoveBuiltinAdmins $true -InstallJobs $true
         _RefreshList -SelectName $newName
     })
 
@@ -465,7 +505,9 @@ function Show-DomainConfigForm {
             -TempDrive    $cbTempDrive.SelectedItem.ToString() `
             -BackupDrive  $cbBackupDrive.SelectedItem.ToString() `
             -InstallDrive $cbInstallDrive.SelectedItem.ToString() `
-            -SQLSourcesPath $tbSQLSourcesPath.Text.Trim()
+            -SQLSourcesPath $tbSQLSourcesPath.Text.Trim() `
+            -RemoveBuiltinAdmins $chkRemoveBuiltinAdmins.Checked `
+            -InstallJobs $chkInstallJobs.Checked
         [System.Windows.Forms.MessageBox]::Show(
             "Profil '$selName' gespeichert.",
             'Gespeichert', 'OK', 'Information') | Out-Null

@@ -51,6 +51,20 @@
 .PARAMETER InstallDrive / DataDrive / LogDrive / TempDrive / BackupDrive
     Override the drive letters from the resolved disk layout (single letter, e.g. 'G').
 
+.PARAMETER SingleDrive
+    Single-drive servers: sets all five roles (Install/Data/Log/Temp/Backup) to this one
+    letter. The letter varies per server even within the same domain, so it is never stored
+    in settings.ini/domain profiles - pass it per run instead. Applied before the individual
+    -InstallDrive/-DataDrive/... overrides, so those still win if also specified.
+
+.PARAMETER KeepBuiltinAdmins
+    Per-run escape hatch: keeps BUILTIN\Administrators even if settings.ini/domain profile
+    [Security] would remove it. Overrides the resolved config for this run only.
+
+.PARAMETER SkipJobs
+    Per-run escape hatch: skips Ola Hallengren + Wartungs-/Backup-Jobs even if settings.ini/domain
+    profile [Maintenance] InstallJobs would install them. Overrides the resolved config for this run only.
+
 .PARAMETER Component
     Optional components to install: SSRS, SSAS, SSMS, SSIS, TDP. When omitted, the components enabled
     in settings.ini [OptionalComponents] are used (SSMS and SSIS default on, matching the GUI). SSIS is
@@ -124,6 +138,12 @@ param(
     [string]$LogDrive,
     [string]$TempDrive,
     [string]$BackupDrive,
+
+    [string]$SingleDrive,
+
+    [switch]$KeepBuiltinAdmins,
+
+    [switch]$SkipJobs,
 
     [ValidateSet('SSRS', 'SSAS', 'SSMS', 'SSIS', 'TDP')]
     [string[]]$Component,
@@ -283,11 +303,27 @@ if ($validEditions -notcontains $selEdition) {
 # Disk layout (hashtable copy so overrides do not mutate the config object)
 $diskLayout = @{}
 foreach ($k in $Config.DiskLayout.Keys) { $diskLayout[$k] = $Config.DiskLayout[$k] }
+# -SingleDrive: Server mit nur einem Datenlaufwerk, dessen Buchstabe innerhalb derselben
+# Domain je Server wechseln kann (mal F:, mal G:, ...) - deshalb bewusst kein INI-Wert,
+# sondern pro Lauf hier angegeben. Wird zuerst angewendet, damit einzelne
+# -InstallDrive/-DataDrive/... weiterhin gezielt ueberschreiben koennen.
+if ($SingleDrive) {
+    $letter = $SingleDrive.TrimEnd(':').Trim()
+    foreach ($k in @('InstallDrive', 'DataDrive', 'LogDrive', 'TempDrive', 'BackupDrive')) {
+        $diskLayout[$k] = $letter
+    }
+}
 if ($InstallDrive) { $diskLayout['InstallDrive'] = $InstallDrive.TrimEnd(':').Trim() }
 if ($DataDrive)    { $diskLayout['DataDrive']    = $DataDrive.TrimEnd(':').Trim() }
 if ($LogDrive)     { $diskLayout['LogDrive']     = $LogDrive.TrimEnd(':').Trim() }
 if ($TempDrive)    { $diskLayout['TempDrive']    = $TempDrive.TrimEnd(':').Trim() }
 if ($BackupDrive)  { $diskLayout['BackupDrive']  = $BackupDrive.TrimEnd(':').Trim() }
+
+# -KeepBuiltinAdmins: per-run override of settings.ini/domain profile [Security] RemoveBuiltinAdmins.
+$effectiveRemoveBuiltinAdmins = if ($KeepBuiltinAdmins) { $false } else { $Config.RemoveBuiltinAdmins }
+
+# -SkipJobs: per-run override of settings.ini/domain profile [Maintenance] InstallJobs.
+$effectiveInstallJobs = if ($SkipJobs) { $false } else { $Config.InstallJobs }
 
 # ---------------------------------------------------------------------------
 # 4a. Neue Domain gefunden? Profil anbieten (nur interaktiv, wie im GUI).
@@ -420,6 +456,27 @@ if ($missingDrives.Count -gt 0) {
     exit 4
 }
 Write-CliLog ('Laufwerks-Pruefung OK: ' + (($reqDrives | ForEach-Object { "$($_):" }) -join ', ') + ' vorhanden.') 'OK'
+
+# ---------------------------------------------------------------------------
+# 7c. Source-files pre-check: Engine (immer) + jede ausgewaehlte Komponente/Treiber
+#     muss ihre Installationsdateien im Quellordner haben - sonst sofortiger Abbruch
+#     statt eines Fehlschlags mitten in der Installation (siehe Test-SelectedSourcesAvailable).
+# ---------------------------------------------------------------------------
+$srcCheckComponents = @('Engine') + @($selComponents | Where-Object { $_ -in 'SSMS', 'SSRS', 'TDP' }) + $selDrivers
+$sourceProblems = Test-SelectedSourcesAvailable `
+    -InstallDrive       $diskLayout['InstallDrive'] `
+    -Version            $selVersion `
+    -OptionalComponents $Config.OptionalComponents `
+    -Drivers            $Config.Drivers `
+    -SelectedComponents $srcCheckComponents
+if ($sourceProblems.Count -gt 0) {
+    foreach ($p in $sourceProblems) { Write-CliLog $p 'ERROR' }
+    Write-CliLog 'Bitte die SQLSources-Struktur (Quellordner) pruefen und erneut versuchen.' 'ERROR'
+    Emit -Phase 'dirs' -Step 'source-check' -State 'error' -Title 'Installationsdateien fehlen' -Detail ($sourceProblems -join '; ')
+    if ($script:EventLog) { New-sqmSetupReport -EventPath $script:EventLog -OutputPath $script:ReportPath -Server $env:COMPUTERNAME | Out-Null }
+    exit 5
+}
+Write-CliLog 'Quelldateien-Pruefung OK: alle benoetigten Installationsdateien vorhanden.' 'OK'
 
 # ---------------------------------------------------------------------------
 # 8. PreInstall checks (interactive dialogs -> only when not NonInteractive)
@@ -576,6 +633,8 @@ if ($SkipPostInstall) {
         -QualysEnabled        $Config.QualysEnabled `
         -QualysMonitoringUser $Config.QualysMonitoringUser `
         -SysadminGroups       $Config.SysadminGroups `
+        -RemoveBuiltinAdmins  $effectiveRemoveBuiltinAdmins `
+        -InstallJobs          $effectiveInstallJobs `
         -OlaSourcePath        $Config.OlaSourcePath `
         -SqlScriptsPath       $Config.SqlScriptsPath `
         -PostInstallScript    $Config.PostInstallScript `

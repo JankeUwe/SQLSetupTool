@@ -317,13 +317,29 @@ function Get-DomainProfile {
     $monRaw  = _PVal 'Monitoring' 'Type' '1'
     if ($monRaw -match '^\d+$') { $monType = [int]$monRaw }
 
+    # RemoveBuiltinAdmins als nullable bool - $null bedeutet "in diesem Profil nicht
+    # gesetzt", damit Get-SetupConfig auf settings.ini [Security] zurueckfallen kann.
+    $removeBuiltinAdmins = $null
+    if ($profileIni.Contains('Security') -and $profileIni['Security'].Contains('RemoveBuiltinAdmins')) {
+        $removeBuiltinAdmins = ($profileIni['Security']['RemoveBuiltinAdmins'].Trim().ToLower() -eq 'true')
+    }
+
+    # InstallJobs als nullable bool - $null bedeutet "in diesem Profil nicht gesetzt",
+    # damit Get-SetupConfig auf settings.ini [Maintenance] zurueckfallen kann.
+    $installJobs = $null
+    if ($profileIni.Contains('Maintenance') -and $profileIni['Maintenance'].Contains('InstallJobs')) {
+        $installJobs = ($profileIni['Maintenance']['InstallJobs'].Trim().ToLower() -eq 'true')
+    }
+
     return [PSCustomObject]@{
-        DisplayName    = _PVal 'Profile'    'DisplayName'
-        Collation      = _PVal 'Collation'  'Default'
-        SysadminGroups = $sysAdminGroups
-        MonitoringType = $monType
-        DiskLayout     = $diskLayout
-        SQLSourcesPath = _PVal 'SQLSources' 'SourcePath'
+        DisplayName          = _PVal 'Profile'    'DisplayName'
+        Collation            = _PVal 'Collation'  'Default'
+        SysadminGroups       = $sysAdminGroups
+        MonitoringType       = $monType
+        DiskLayout           = $diskLayout
+        SQLSourcesPath       = _PVal 'SQLSources' 'SourcePath'
+        RemoveBuiltinAdmins  = $removeBuiltinAdmins
+        InstallJobs          = $installJobs
     }
 }
 
@@ -353,6 +369,12 @@ function Save-DomainProfile {
     .PARAMETER DiskLayout
         Hashtable mit DataDrive/LogDrive/TempDrive/BackupDrive/InstallDrive.
     .PARAMETER SQLSourcesPath
+    .PARAMETER RemoveBuiltinAdmins
+        $true  = BUILTIN\Administrators wird in dieser Domain nach der Installation entfernt (Standard).
+        $false = BUILTIN\Administrators bleibt in dieser Domain bestehen (Ausnahme vom globalen Standard).
+    .PARAMETER InstallJobs
+        $true  = Wartungs-/Backup-Jobs (Ola Hallengren) werden in dieser Domain eingerichtet (Standard).
+        $false = Keine Jobs (Ausnahme vom globalen Standard, z.B. Kunden mit eigenem Backup-Tool/TDP).
     .OUTPUTS
         Vollstaendiger Pfad der geschriebenen .ini-Datei.
     #>
@@ -364,7 +386,9 @@ function Save-DomainProfile {
         [string[]]$SysadminGroups = @(),
         [int]$MonitoringType = 1,
         [hashtable]$DiskLayout,
-        [string]$SQLSourcesPath = ''
+        [string]$SQLSourcesPath = '',
+        [bool]$RemoveBuiltinAdmins = $true,
+        [bool]$InstallJobs = $true
     )
 
     $domainsDir = Join-Path $ConfigDir 'domains'
@@ -410,7 +434,17 @@ function Save-DomainProfile {
         '# Pfad zu den SQL-Installationsquellen auf Servern dieser Domain.',
         '# Das Setup-Tool sucht hier nach SQL<Version>\SQL_Install\setup.exe usw.',
         '# Leer = globaler SourceShare aus settings.ini wird verwendet.',
-        "SourcePath = $SQLSourcesPath"
+        "SourcePath = $SQLSourcesPath",
+        '',
+        '[Security]',
+        '# false = BUILTIN\Administrators bleibt in dieser Domain bestehen (Ausnahme vom',
+        '# globalen Standard settings.ini [Security] Standard=true).',
+        "RemoveBuiltinAdmins = $(if ($RemoveBuiltinAdmins) { 'true' } else { 'false' })",
+        '',
+        '[Maintenance]',
+        '# false = keine Wartungs-/Backup-Jobs (Ola Hallengren) in dieser Domain (Ausnahme vom',
+        '# globalen Standard settings.ini [Maintenance] Standard=true), z.B. bei eigenem Backup-Tool/TDP.',
+        "InstallJobs = $(if ($InstallJobs) { 'true' } else { 'false' })"
     )
     Set-Content -Path $path -Value $lines -Encoding UTF8
     return $path
@@ -628,6 +662,38 @@ function Get-SetupConfig {
         }
     }
 
+    # -- [Security] - BUILTIN\Administrators nach der Installation entfernen? ----
+    # Prioritaet: 1. Domain-Profil, 2. settings.ini Domain_<NAME>, 3. settings.ini Standard
+    $removeBuiltinAdmins = $true
+    if ($domainProfile -and $null -ne $domainProfile.RemoveBuiltinAdmins) {
+        $removeBuiltinAdmins = $domainProfile.RemoveBuiltinAdmins
+    }
+    elseif ($ini.Contains('Security')) {
+        $secSection = $ini['Security']
+        if ($domain -and $secSection.Contains("Domain_$domain")) {
+            $removeBuiltinAdmins = ($secSection["Domain_$domain"].Trim() -eq 'true')
+        }
+        elseif ($secSection.Contains('Standard')) {
+            $removeBuiltinAdmins = ($secSection['Standard'].Trim() -eq 'true')
+        }
+    }
+
+    # -- [Maintenance] - Wartungs-/Backup-Jobs (Ola Hallengren) installieren? ----
+    # Prioritaet: 1. Domain-Profil, 2. settings.ini Domain_<NAME>, 3. settings.ini Standard
+    $installJobs = $true
+    if ($domainProfile -and $null -ne $domainProfile.InstallJobs) {
+        $installJobs = $domainProfile.InstallJobs
+    }
+    elseif ($ini.Contains('Maintenance')) {
+        $maintSection = $ini['Maintenance']
+        if ($domain -and $maintSection.Contains("Domain_$domain")) {
+            $installJobs = ($maintSection["Domain_$domain"].Trim() -eq 'true')
+        }
+        elseif ($maintSection.Contains('Standard')) {
+            $installJobs = ($maintSection['Standard'].Trim() -eq 'true')
+        }
+    }
+
     # -- [OptionalComponents] ------------------------------------------------
     $optComp = [ordered]@{}
     if ($ini.Contains('OptionalComponents')) {
@@ -715,6 +781,12 @@ function Get-SetupConfig {
 
         # Sysadmin-Gruppen (domänenspezifisch, fuer PostInstall)
         SysadminGroups      = @($sysadminGroups)
+
+        # BUILTIN\Administrators nach der Installation entfernen? (domänenspezifisch, fuer PostInstall)
+        RemoveBuiltinAdmins = $removeBuiltinAdmins
+
+        # Wartungs-/Backup-Jobs (Ola Hallengren) installieren? (domänenspezifisch, fuer PostInstall)
+        InstallJobs         = $installJobs
 
         # Monitoring
         MonitoringEnabled   = $monitoringEnabled

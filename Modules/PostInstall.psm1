@@ -56,6 +56,15 @@ function Invoke-PostInstall {
     .PARAMETER SysadminGroups
         AD-Gruppen die zur sysadmin-Rolle hinzugefuegt werden (aus settings.ini [SysadminGroups]).
         Leer = keine Gruppe zuweisen, SA-Obfuscation wird uebersprungen.
+    .PARAMETER RemoveBuiltinAdmins
+        Entfernt BUILTIN\Administrators nach der Installation als Login (aus settings.ini/Domain-Profil
+        [Security]). Standard: $true. Wie bei der SA-Obfuscation nur wirksam wenn zu diesem Zeitpunkt
+        bereits ein anderes aktives sysadmin-Login existiert - sonst Sicherheitsabbruch.
+    .PARAMETER InstallJobs
+        Ola Hallengren Maintenance Solution + Wartungs-/Backup-Jobs (IndexOptimize, IntegrityCheck,
+        System-DB Backup, User-DB Backup FULL/DIFF/LOG) einrichten? (aus settings.ini/Domain-Profil
+        [Maintenance] InstallJobs). Standard: $true. $false fuer Domains/Kunden mit eigenem
+        Backup-/Wartungswerkzeug (z.B. TDP), bei denen die Setup-Tool-Jobs nicht erwuenscht sind.
     .PARAMETER OlaSourcePath
         Lokaler Fallback-Pfad fuer Ola Hallengren ZIP/Verzeichnis.
         Leer = nur GitHub. Wird verwendet wenn GitHub nicht erreichbar ist.
@@ -80,6 +89,8 @@ function Invoke-PostInstall {
         [bool]$QualysEnabled = $false,
         [string]$QualysMonitoringUser = '',
         [string[]]$SysadminGroups = @(),
+        [bool]$RemoveBuiltinAdmins = $true,
+        [bool]$InstallJobs = $true,
         [string]$OlaSourcePath = '',
         [string]$SqlScriptsPath = '',
         [int]$BasePort = 0,
@@ -247,6 +258,34 @@ function Invoke-PostInstall {
             }
         }
 
+        # ===== 7b. BUILTIN\Administrators entfernen =====
+        # Wie SA-Obfuscation durabel abgesichert: der Login wird NUR entfernt wenn zu
+        # diesem Zeitpunkt bereits ein anderes aktives sysadmin-Login existiert (i.d.R.
+        # eine der gerade in Schritt 7 zugewiesenen AD-Gruppen). Sonst Sicherheitsabbruch,
+        # damit niemand von der Instanz ausgesperrt wird.
+        Invoke-Step '07b-RemoveBuiltinAdmin' 'BUILTIN\Administrators entfernen' {
+            if (-not $RemoveBuiltinAdmins) {
+                log "  Uebersprungen (settings.ini/Domain-Profil [Security]: RemoveBuiltinAdmins = false)."
+                return
+            }
+            $biLogin = Get-DbaLogin -SqlInstance $SqlInstance -Login 'BUILTIN\Administrators' -ErrorAction SilentlyContinue
+            if (-not $biLogin) {
+                log "  BUILTIN\Administrators ist kein Login auf dieser Instanz - nichts zu tun."
+                return
+            }
+            $otherAdmins = (Invoke-DbaQuery -SqlInstance $SqlInstance -Database master -Query @"
+SELECT COUNT(*) AS c FROM sys.server_principals
+WHERE IS_SRVROLEMEMBER('sysadmin', name) = 1 AND name <> 'BUILTIN\Administrators' AND sid <> 0x01 AND name NOT LIKE '##%'
+"@ -ErrorAction Stop).c
+            if ([int]$otherAdmins -le 0) {
+                log "  WARN: Kein weiteres aktives sysadmin-Login - BUILTIN\Administrators wird NICHT entfernt (Sicherheitsabbruch)."
+                log "  HINWEIS: [SysadminGroups] konfigurieren und mit -Force erneut ausfuehren."
+                return
+            }
+            Remove-DbaLogin -SqlInstance $SqlInstance -Login 'BUILTIN\Administrators' -Confirm:$false -ErrorAction Stop
+            log "  OK: Login 'BUILTIN\Administrators' entfernt."
+        }
+
         # ===== 8. SA-Obfuscation =====
         # Durabel abgesichert (auch ohne State): nur wenn SID 0x01 noch 'sa' heisst UND ein
         # weiteres aktives sysadmin-Login existiert. So wird ein bereits verschleierter SA
@@ -335,12 +374,15 @@ WHERE IS_SRVROLEMEMBER('sysadmin', name) = 1 AND sid <> 0x01 AND name NOT LIKE '
             }
         }
 
-        # ===== 12. Ola Hallengren Maintenance Solution =====
+        # ===== 12-15. Ola Hallengren Maintenance Solution + Wartungs-/Backup-Jobs =====
+        $olaOk = $false
+        if (-not $InstallJobs) {
+            log "PostInstall: Wartungs-/Backup-Jobs deaktiviert (settings.ini/Domain-Profil [Maintenance] InstallJobs = false) - Schritte 12-15 uebersprungen."
+        }
         # Inline (nicht via Invoke-Step), damit der Schritt nur bei tatsaechlichem Erfolg als
         # 'Completed' markiert wird - so wird er bei einem Fehlschlag (z.B. kein Internet) beim
         # naechsten Lauf erneut versucht. OlaOk wird beim Resume aus dem State abgeleitet.
-        $olaOk = $false
-        if ($state.ContainsKey('12-OlaInstall') -and $state['12-OlaInstall'].Status -eq 'Completed') {
+        elseif ($state.ContainsKey('12-OlaInstall') -and $state['12-OlaInstall'].Status -eq 'Completed') {
             $olaOk = $true
             log "PostInstall: [12-OlaInstall] Ola Hallengren - bereits erledigt ($($state['12-OlaInstall'].Timestamp)), uebersprungen."
         }

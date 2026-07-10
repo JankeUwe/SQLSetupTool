@@ -9,7 +9,8 @@
     Tabs:
       1  Quellpfade   - PropertyGrid: SourceShare, Module, Treiber, Opt. Komponenten, Wartung
       2  SQLSources   - Struktur anlegen (Standard + Ziel-Server-Variante mit ZIP-Option)
-      3  Instanz-Defaults - PropertyGrid: Version/Edition/Instance/Collation, Ports, PreInstall
+      3  Instanz-Defaults - PropertyGrid: Version/Edition/Instance/Collation, Ports, PreInstall,
+                             TempDB, Sicherheit (globaler RemoveBuiltinAdmins-Standard)
 #>
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -382,6 +383,12 @@ namespace SqlSetupTool
         [Description("true = TempDbFileCount IMMER exakt verwenden, auch nach PostInstall (z.B. wenn ein Kunde eine bestimmte Anzahl vorschreibt). false (Standard) = PostInstall waehlt die Anzahl automatisch anhand der CPU-Kerne (4-8, Microsoft-Empfehlung).")]
         public bool TempDbFileCountFixed { get; set; }
 
+        // --- 5 - Sicherheit ---
+        [Category("5 - Sicherheit")]
+        [DisplayName("RemoveBuiltinAdminsStandard")]
+        [Description("Globaler Standard: BUILTIN\\Administrators nach der Installation als Login entfernen (nur wenn zu dem Zeitpunkt bereits ein anderes aktives sysadmin-Login existiert, sonst Sicherheitsabbruch). Pro Domain ueberschreibbar im Domain-Konfiguration-Editor.")]
+        public bool RemoveBuiltinAdminsStandard { get; set; }
+
         public SqlDefaultsConfig()
         {
             DefaultVersion      = "2022";
@@ -396,6 +403,7 @@ namespace SqlSetupTool
             HpuCheck            = false;
             TempDbFileCount      = 2;
             TempDbFileCountFixed = false;
+            RemoveBuiltinAdminsStandard = true;
         }
     }
 }
@@ -897,6 +905,7 @@ function Show-ConfigForm {
     $defaultsConfig.HpuCheck           = ((_IniVal 'PreInstall' 'HpuCheck') -eq 'true')
     $defaultsConfig.TempDbFileCount      = [int](_IniVal 'Installation' 'TempDbFileCount' '2')
     $defaultsConfig.TempDbFileCountFixed = ((_IniVal 'Installation' 'TempDbFileCountFixed') -eq 'true')
+    $defaultsConfig.RemoveBuiltinAdminsStandard = ((_IniVal 'Security' 'Standard' 'true') -ne 'false')
 
     $propGrid3                = New-Object System.Windows.Forms.PropertyGrid
     $propGrid3.Dock           = 'Fill'
@@ -1136,6 +1145,8 @@ function Show-ConfigForm {
 
             _UpdateIni -IniPath $IniPath -Section 'Installation' -Key 'TempDbFileCount'      -Value $defaultsConfig.TempDbFileCount.ToString()
             _UpdateIni -IniPath $IniPath -Section 'Installation' -Key 'TempDbFileCountFixed' -Value $defaultsConfig.TempDbFileCountFixed.ToString().ToLower()
+
+            _UpdateIni -IniPath $IniPath -Section 'Security' -Key 'Standard' -Value $defaultsConfig.RemoveBuiltinAdminsStandard.ToString().ToLower()
 
             # --- Definierte SourceShare-Struktur im Hintergrund anlegen. ---
             # Ist der Pfad (z.B. UNC-Freigabe) nicht erreichbar: ZIP-Fallback ueber die
