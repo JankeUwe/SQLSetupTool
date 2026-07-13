@@ -40,7 +40,8 @@ function Invoke-PostInstall {
         TSM/TDP aktivieren? (wird bei TDP-Installation auf $true gesetzt).
     .PARAMETER InstallConfig
         PSCustomObject aus Config.psm1 [Installation]-Sektion.
-        Wird fuer TempDB-Groesse/Wachstum und BrowserSvc-Einstellung verwendet.
+        Wird fuer TempDB-Groesse/Wachstum, BrowserSvc-Einstellung und DelayedAutoStartOnVM
+        (verzoegerter Autostart bei erkannter virtueller Maschine) verwendet.
     .PARAMETER SplunkEnabled
         Invoke-sqmSplunkConfiguration nach der Installation ausfuehren? (aus settings.ini [PostInstall]).
         Standard: $false.
@@ -207,6 +208,27 @@ function Invoke-PostInstall {
         Invoke-Step '03-Agent' 'SQL Server Agent (Autostart)' {
             Enable-SqlAgentAutoStart -SqlInstance $SqlInstance
             log "  OK: SQL Agent auf Automatisch gesetzt"
+        }
+
+        # ===== 3b. Verzoegerter Autostart bei virtuellen Maschinen =====
+        $delayedStartOnVm = if ($InstallConfig) { $InstallConfig.DelayedAutoStartOnVM } else { $true }
+        if ($delayedStartOnVm) {
+            Invoke-Step '03b-DelayedStart' 'Verzoegerter Autostart (VM-Erkennung)' {
+                if (Test-IsVirtualMachine) {
+                    $svcNames  = Get-SqlServiceNames -SqlInstance $SqlInstance
+                    $okEngine  = Set-ServiceDelayedAutoStart -ServiceName $svcNames.Engine
+                    $okAgent   = Set-ServiceDelayedAutoStart -ServiceName $svcNames.Agent
+                    log "  OK: virtuelle Maschine erkannt."
+                    log "  Engine ($($svcNames.Engine)): $(if ($okEngine) { 'verzoegerter Autostart gesetzt' } else { 'Dienst nicht gefunden - uebersprungen' })"
+                    log "  Agent  ($($svcNames.Agent)): $(if ($okAgent)  { 'verzoegerter Autostart gesetzt' } else { 'Dienst nicht gefunden - uebersprungen' })"
+                }
+                else {
+                    log "  Physische Maschine erkannt - verzoegerter Autostart nicht erforderlich, uebersprungen."
+                }
+            }
+        }
+        else {
+            log "PostInstall: Verzoegerter Autostart deaktiviert (settings.ini [Installation] DelayedAutoStartOnVM = false)."
         }
 
         # ===== 4. TempDB =====
@@ -497,15 +519,71 @@ function Set-SqlMaxDop {
     Set-DbaSpConfigure -SqlInstance $SqlInstance -Name 'max degree of parallelism' -Value $maxdop -Confirm:$false
 }
 
+function Get-SqlServiceNames {
+    <#
+    .SYNOPSIS
+        Ermittelt die Windows-Dienstnamen fuer SQL Server Engine + Agent aus dem Instanznamen.
+    .NOTES
+        Default-Instanz: MSSQLSERVER / SQLSERVERAGENT
+        Benannte Instanz "SRV\INST": MSSQL$INST / SQLAGENT$INST
+    #>
+    param([Parameter(Mandatory)][string]$SqlInstance)
+    if ($SqlInstance -match '\\') {
+        $inst = $SqlInstance.Split('\')[1]
+        return [PSCustomObject]@{
+            Engine = "MSSQL`$$inst"
+            Agent  = "SQLAGENT`$$inst"
+        }
+    }
+    return [PSCustomObject]@{
+        Engine = 'MSSQLSERVER'
+        Agent  = 'SQLSERVERAGENT'
+    }
+}
+
 function Enable-SqlAgentAutoStart {
     param([Parameter(Mandatory)][string]$SqlInstance)
-    $svcName = if ($SqlInstance -match '\\') {
-        "SQLSERVERAGENT`$$($SqlInstance.Split('\')[1])"
-    } else {
-        'SQLSERVERAGENT'
-    }
+    $svcName = (Get-SqlServiceNames -SqlInstance $SqlInstance).Agent
     Set-Service  -Name $svcName -StartupType Automatic -ErrorAction SilentlyContinue
     Start-Service -Name $svcName                        -ErrorAction SilentlyContinue
+}
+
+function Test-IsVirtualMachine {
+    <#
+    .SYNOPSIS
+        Erkennt ob das aktuelle System eine virtuelle Maschine ist.
+    .DESCRIPTION
+        Prueft Win32_ComputerSystem Model/Manufacturer auf bekannte Hypervisor-Signaturen
+        (Hyper-V, VMware, VirtualBox, KVM/QEMU, Xen/Nitro, Google Compute Engine, Nutanix).
+        Liefert im Zweifel (WMI nicht verfuegbar) $false - der Delayed-Start-Schritt wird
+        dann uebersprungen statt faelschlicherweise auf physischer Hardware zu greifen.
+    #>
+    try {
+        $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+        $signatures = 'Virtual Machine', 'VMware', 'VirtualBox', 'KVM', 'QEMU', 'Xen', 'HVM domU', 'Google Compute Engine', 'Nutanix', 'Amazon EC2'
+        foreach ($sig in $signatures) {
+            if ($cs.Model -like "*$sig*" -or $cs.Manufacturer -like "*$sig*") { return $true }
+        }
+    }
+    catch { }
+    return $false
+}
+
+function Set-ServiceDelayedAutoStart {
+    <#
+    .SYNOPSIS
+        Setzt einen Windows-Dienst auf "Automatisch (verzoegerter Start)".
+    .DESCRIPTION
+        Set-Service -StartupType kennt in Windows PowerShell 5.1 nur Automatic/Manual/Disabled -
+        "delayed-auto" existiert nur als sc.exe-Konfigurationswert. Daher ueber sc.exe gesetzt.
+    .NOTES
+        sc.exe erwartet "start= delayed-auto" mit Leerzeichen NACH dem Gleichheitszeichen -
+        das ist eine sc.exe-Eigenheit, keine PowerShell-Formatierung.
+    #>
+    param([Parameter(Mandatory)][string]$ServiceName)
+    if (-not (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue)) { return $false }
+    $null = & sc.exe config $ServiceName start= delayed-auto
+    return ($LASTEXITCODE -eq 0)
 }
 
 function Set-SqlTempDbFiles {

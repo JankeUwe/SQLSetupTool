@@ -613,6 +613,7 @@ function Get-SetupConfig {
         TcpEnabled          = ($instSection['TcpEnabled']          -ne 'false')
         NpEnabled           = ($instSection['NpEnabled']           -eq 'true')
         BrowserSvcDisabled  = ($instSection['BrowserSvcDisabled']  -ne 'false')
+        DelayedAutoStartOnVM = ($instSection['DelayedAutoStartOnVM'] -ne 'false')
     }
 
     # -- [PostInstall] -----------------------------------------------------------
