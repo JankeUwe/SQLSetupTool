@@ -14,7 +14,7 @@
 
 ### Fix: versions comma-split bug
 
-Added a PS2EXE feasibility test for FI-TS.
+Added a PS2EXE feasibility test for a locked-down deployment target.
 
 ## [Unreleased] — 2026-06-22
 
@@ -60,8 +60,8 @@ hint-label positioning, and dialog sizing so buttons are no longer cut off.
 Drivers, ports, and PreInstall/PostInstall sections in config; `Drivers.psm1` and
 `PreInstall.psm1`; driver checkboxes, TCP port display, and PreInstall/PostInstall TCP port
 handling. Path validation on GUI startup. Extended `New-SqlSourceStructure` with a centralized
-source structure, README placeholders, and an FI-TS variant; source structure extended to match
-FI-TS component alignment.
+source structure, README placeholders, and a variant for locked-down environments; source
+structure extended to match a specific customer's component alignment.
 
 ## [Unreleased] — 2026-05-20 to 2026-05-23
 
