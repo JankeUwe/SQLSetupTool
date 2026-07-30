@@ -1,8 +1,14 @@
 # SQLSetupTool
 
-PowerShell-basiertes WinForms-Tool zur standardisierten Installation und Konfiguration von Microsoft SQL Server in Enterprise-Umgebungen.
+Kompiliertes .NET-WinForms-Tool (net48) zur standardisierten Installation und Konfiguration von Microsoft SQL Server in Enterprise-Umgebungen. Nutzt dbatools/sqmSQLTool ueber einen eingebetteten PowerShell-Host.
 
 Entwickelt von [Uwe Janke](https://www.powershelldba.de) | [powershelldba.de](https://www.powershelldba.de)
+
+---
+
+## Download & Start
+
+Repo als ZIP herunterladen, entpacken, `Start-SQLSetupTool.cmd` per Doppelklick ausfuehren. Kein Installer noetig. Der Launcher kopiert das Tool nach `%ProgramData%\SQLSetupTool` (bleibt nach der UAC-Elevation erreichbar) und startet `SQLSetupTool.exe` als Administrator.
 
 ---
 
@@ -12,15 +18,17 @@ Das Tool trennt Konfiguration strikt nach drei Rollen:
 
 | Rolle | Starter | Beschreibung |
 |-------|---------|--------------|
-| **Anwender** | `Start-Tool.cmd` | Startet das Setup-Hauptfenster |
+| **Anwender** | `Start-SQLSetupTool.cmd` | Startet das Setup-Hauptfenster (als Administrator) |
 | **Admin** | `Start-AdminConfig.cmd` | Pflegt globale Pfade und SQL-Defaults (`Config\settings.ini`) |
 | **Domain-Admin** | `Start-DomainConfig.cmd` | Pflegt domain-spezifische Profile (`Config\domains\*.ini`) |
+
+Admin- und Domain-Admin-Editor bearbeiten nur INI-Dateien und benoetigen daher keine Administrator-Rechte.
 
 ---
 
 ## Anwender
 
-`Start-Tool.cmd` oeffnet das Haupt-Setup-Fenster. Konfigurationsaenderungen sind hier nicht moeglich.
+`Start-SQLSetupTool.cmd` oeffnet das Haupt-Setup-Fenster. Konfigurationsaenderungen sind hier nicht moeglich.
 
 Das Tool laedt automatisch das Domain-Profil des aktuellen Computers (NetBIOS-Domainname). Gibt es keinen Match, wird `DEFAULT.ini` verwendet.
 
@@ -92,29 +100,35 @@ Laufwerksbuchstaben fuer die SQL Server Datenbereiche:
 
 ```
 SQLSetupTool\
-  Start-Tool.cmd              # Anwender
-  Start-AdminConfig.cmd       # Admin
-  Start-DomainConfig.cmd      # Domain-Admin
+  SQLSetupTool.exe             # Haupt-Tool (GUI, .NET 4.8)
+  SQLSetupTool.exe.config
+  SQLSetupTool.Core.dll        # Config/Validation/DiskLayout-Logik
+  SQLSetupTool.PsHost.dll      # Eingebetteter PowerShell-Host
+  Newtonsoft.Json.dll
+  Start-SQLSetupTool.cmd       # Anwender (elevated)
+  Start-AdminConfig.cmd        # Admin
+  Start-DomainConfig.cmd       # Domain-Admin
+  Start-SqlSetup.cmd/.ps1      # Headless CLI-Variante (kein GUI, PowerShell-basiert)
   Config\
     settings.ini              # Globale Konfiguration
     collations.txt            # Liste verfuegbarer Collations
     domains\
       DEFAULT.ini             # Fallback-Profil (immer vorhanden)
       <DOMAIN>.ini            # Ein Profil pro Active-Directory-Domain
-  GUI\
-    MainForm.ps1              # Haupt-Setup-Formular
-    ConfigForm.ps1            # Admin-Konfigurationsformular
-    DomainConfigForm.ps1      # Domain-Profil-Editor
-  Modules\
-    Config.psm1               # INI-Lese- und Merge-Logik
-    Setup.psm1                # SQL-Server-Installations-Logik
+  Modules\                    # PowerShell-Fachlogik, vom Tool zur Laufzeit geladen
+    Installation.psm1          # Install-DbaInstance-Aufruf
+    PreInstall.psm1 / PostInstall.psm1
+    CopySource.psm1 / DiskLayout.psm1 / Drivers.psm1
+  Scripts\                    # Post-Install-/Quellstruktur-Skripte
 ```
+
+Der Quellcode (C#-Projekte, Tests) liegt im privaten Repo [SQLSetupToolSource](https://github.com/JankeUwe/SQLSetupToolSource).
 
 ---
 
 ## Systemvoraussetzungen
 
 - Windows Server 2016 / 2019 / 2022 oder Windows 10/11
-- PowerShell 5.1
-- .NET Framework 4.7.2 oder hoeher
+- .NET Framework 4.8 (in Windows 10 2004+/Windows 11 enthalten)
+- PowerShell 5.1 (fuer dbatools/sqmSQLTool und die Modules\*.psm1-Fachlogik)
 - SQL Server Installationsmedien (ISO oder entpackt)

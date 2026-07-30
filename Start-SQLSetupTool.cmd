@@ -16,7 +16,7 @@ setlocal EnableDelayedExpansion
 
 set "SRCDIR=%~dp0"
 set "LOCALDIR=%ProgramData%\SQLSetupTool"
-set "LOCALPS=%LOCALDIR%\Main.ps1"
+set "LOCALEXE=%LOCALDIR%\SQLSetupTool.exe"
 
 echo.
 echo  Start-SQLSetupTool
@@ -44,7 +44,7 @@ if errorlevel 1 (
 echo  Dateien bereit - starte als Administrator ...
 echo.
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
-    "Start-Process powershell.exe -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File ""%LOCALPS%""' -Verb RunAs"
+powershell.exe -NoProfile -Command ^
+    "Start-Process -FilePath '%LOCALEXE%' -Verb RunAs"
 
 endlocal

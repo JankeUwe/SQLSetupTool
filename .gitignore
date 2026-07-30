@@ -12,3 +12,14 @@
 *.bak
 Thumbs.db
 desktop.ini
+
+# C#/.NET build output (falls direkt hier gebaut wird)
+bin/
+obj/
+*.user
+
+# Quellcode lebt im privaten Repo SQLSetupToolSource, nicht hier
+src/
+*.sln
+nuget.config
+Archiv-*.zip
