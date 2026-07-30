@@ -108,7 +108,6 @@ SQLSetupTool\
   Start-SQLSetupTool.cmd       # Anwender (elevated)
   Start-AdminConfig.cmd        # Admin
   Start-DomainConfig.cmd       # Domain-Admin
-  Start-SqlSetup.cmd/.ps1      # Headless CLI-Variante (kein GUI, PowerShell-basiert)
   Config\
     settings.ini              # Globale Konfiguration
     collations.txt            # Liste verfuegbarer Collations
@@ -119,7 +118,7 @@ SQLSetupTool\
     Installation.psm1          # Install-DbaInstance-Aufruf
     PreInstall.psm1 / PostInstall.psm1
     CopySource.psm1 / DiskLayout.psm1 / Drivers.psm1
-  Scripts\                    # Post-Install-/Quellstruktur-Skripte
+  Scripts\                    # Post-Install-Skripte
 ```
 
 Der Quellcode (C#-Projekte, Tests) liegt im privaten Repo [SQLSetupToolSource](https://github.com/JankeUwe/SQLSetupToolSource).
