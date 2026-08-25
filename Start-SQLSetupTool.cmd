@@ -21,9 +21,26 @@ set "LOCALEXE=%LOCALDIR%\SQLSetupTool.exe"
 echo.
 echo  Start-SQLSetupTool
 echo  ============================================================
-echo  Quelle : %SRCDIR%
-echo  Ziel   : %LOCALDIR%
+echo  Dieser Rechner : %COMPUTERNAME%
+echo  Quelle         : %SRCDIR%
+echo  Ziel           : %LOCALDIR%
 echo.
+
+if /I "%SESSIONNAME:~0,7%"=="Console" (
+    echo  WARNUNG: Diese Sitzung ist keine RDP-Sitzung ^(SESSIONNAME=%SESSIONNAME%^).
+    echo  %%ProgramData%% zeigt dann auf DIESEN Rechner ^(%COMPUTERNAME%^), nicht auf den
+    echo  SQL-Zielserver. Falls %COMPUTERNAME% nicht der Zielserver ist: erst per RDP auf
+    echo  den Zielserver verbinden, dort zum Share navigieren und das Skript von DORT
+    echo  aus starten - sonst installiert das Tool moeglicherweise auf dem falschen
+    echo  Rechner bzw. schlaegt mangels Berechtigung auf %%ProgramData%% fehl.
+    echo.
+    choice /M "Trotzdem hier auf %COMPUTERNAME% fortfahren"
+    if errorlevel 2 (
+        endlocal
+        exit /b 1
+    )
+    echo.
+)
 
 if not exist "%LOCALDIR%" (
     mkdir "%LOCALDIR%"

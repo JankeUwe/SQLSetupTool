@@ -10,6 +10,8 @@ Entwickelt von [Uwe Janke](https://www.powershelldba.de) | [powershelldba.de](ht
 
 Repo als ZIP herunterladen, entpacken, `Start-SQLSetupTool.cmd` per Doppelklick ausfuehren. Kein Installer noetig. Der Launcher kopiert das Tool nach `%ProgramData%\SQLSetupTool` (bleibt nach der UAC-Elevation erreichbar) und startet `SQLSetupTool.exe` als Administrator.
 
+**Wichtig bei RDP-Nutzung:** `Start-SQLSetupTool.cmd` muss *innerhalb* der RDP-Sitzung auf dem SQL-Zielserver gestartet werden - also: per RDP auf den Zielserver verbinden, dort zum Share/umgeleiteten Client-Laufwerk navigieren und das Skript von dort aus ausfuehren. `%ProgramData%` bezieht sich immer auf den Rechner, der das Skript tatsaechlich ausfuehrt. Wird das Skript stattdessen lokal auf dem RDP-Client selbst gestartet (z. B. aus einem lokal entpackten ZIP), installiert es auf dem eigenen PC statt auf dem Zielserver - und schlaegt dort mangels Schreibrechten auf `%ProgramData%` oft mit einem Berechtigungsfehler fehl. Das Skript warnt inzwischen, wenn es ausserhalb einer RDP-Sitzung laeuft (Erkennung ueber `SESSIONNAME`).
+
 ---
 
 ## Rollenkonzept
