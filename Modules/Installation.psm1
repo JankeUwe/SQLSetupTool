@@ -174,8 +174,10 @@ function Install-SsrsComponent {
         Installiert und konfiguriert SQL Server Reporting Services.
         Delegiert an Install-sqmSsrsReportServer aus sqmSQLTool.
     .PARAMETER SourcePath
-        Verzeichnis das SQLServerReportingServices*.exe enthaelt.
-        Wildcard: SQLServerReportingServices_2022.exe u.ae. werden erkannt.
+        Verzeichnis das SQLServerReportingService(s)*.exe enthaelt.
+        Wildcard laesst auch das trennende 's' vor der Versionsangabe offen, damit sowohl
+        SQLServerReportingServices.exe/_2022.exe (Microsoft-Standardname) als auch abweichend
+        benannte Kopien wie SQLServerReportingService_2022.exe (ohne Plural-s) erkannt werden.
         Konvention: $InstallDrive:\SQLSources\SQL$Version\Reporting
     .PARAMETER InstanceName
         SQL-Server-Instanzname (MSSQLSERVER fuer Default-Instanz).
@@ -197,13 +199,15 @@ function Install-SsrsComponent {
         [ScriptBlock]$LogCallback
     )
 
-    # Wildcard-Suche: findet SQLServerReportingServices.exe UND SQLServerReportingServices_2022.exe usw.
-    $installer = Get-ChildItem -Path $SourcePath -Filter 'SQLServerReportingServices*.exe' |
+    # Wildcard-Suche direkt nach 'Service': findet sowohl SQLServerReportingServices.exe /
+    # SQLServerReportingServices_2022.exe (Microsoft-Standardname, Plural) als auch
+    # SQLServerReportingService_2022.exe (ohne Plural-s) - das 's' selbst ist Teil des '*'.
+    $installer = Get-ChildItem -Path $SourcePath -Filter 'SQLServerReportingService*.exe' |
                  Sort-Object Name -Descending |
                  Select-Object -First 1
 
     if (-not $installer) {
-        throw "SSRS-Installer nicht gefunden unter: $SourcePath (erwartet: SQLServerReportingServices*.exe)"
+        throw "SSRS-Installer nicht gefunden unter: $SourcePath (erwartet: SQLServerReportingService(s)*.exe)"
     }
 
     if ($LogCallback) { & $LogCallback "Installiere SSRS: $($installer.FullName)" }
@@ -297,7 +301,8 @@ function Install-SsmsComponent {
     .SYNOPSIS
         Installiert SQL Server Management Studio (stiller Setup).
     .PARAMETER SourcePath
-        Verzeichnis das SSMS-Setup-*.exe enthaelt.
+        Verzeichnis das den SSMS-Installer enthaelt (z.B. SSMS-Setup-ENU.exe,
+        SSMS-Setup-DEU.exe oder abweichend getrennte/benannte Kopien wie SSMS_Setup_ENU.exe).
         Konvention: $InstallDrive:\SQLSources\SQL$Version\Management
     .PARAMETER LogCallback
         Optionaler ScriptBlock fuer GUI-Logging.
@@ -310,12 +315,17 @@ function Install-SsmsComponent {
         [ScriptBlock]$LogCallback
     )
 
-    $installer = Get-ChildItem -Path $SourcePath -Filter 'SSMS-Setup-*.exe' |
+    # -Include braucht -Recurse (oder einen Pfad mit trailendem '\*'), sonst wird es von
+    # Get-ChildItem stillschweigend ignoriert - gleiches Muster wie in Drivers.psm1.
+    # Deckt Bindestrich- UND Unterstrich-Varianten ab (SSMS-Setup-ENU.exe, SSMS_Setup_ENU.exe);
+    # Locale-/Versions-Suffix ist ueber '*' ohnehin beliebig, und die Dateisystemsuche selbst ist
+    # unter Windows case-insensitiv (ssms-setup-*.exe faende genauso).
+    $installer = Get-ChildItem -Path $SourcePath -Include 'SSMS-Setup-*.exe', 'SSMS_Setup_*.exe' -Recurse -ErrorAction SilentlyContinue |
                  Sort-Object Name -Descending |
                  Select-Object -First 1
 
     if (-not $installer) {
-        throw "SSMS-Installer nicht gefunden unter: $SourcePath"
+        throw "SSMS-Installer nicht gefunden unter: $SourcePath (erwartet: SSMS-Setup-*.exe oder SSMS_Setup_*.exe)"
     }
 
     if ($LogCallback) { & $LogCallback "Installiere SSMS: $($installer.FullName)" }
