@@ -2,7 +2,7 @@
 
 Kompiliertes .NET-WinForms-Tool (net48) zur standardisierten Installation und Konfiguration von Microsoft SQL Server in Enterprise-Umgebungen. Nutzt dbatools/sqmSQLTool ueber einen eingebetteten PowerShell-Host.
 
-Entwickelt von [Uwe Janke](https://www.powershelldba.de) | [powershelldba.de](https://www.powershelldba.de)
+Entwickelt von [Uwe Janke](https://www.powershelldba.de) | Projektseite: [powershelldba.de/sqlsetuptool](https://www.powershelldba.de/sqlsetuptool/)
 
 ---
 
